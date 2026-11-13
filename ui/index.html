@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Turing Translate</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="resizer" title="Breite ziehen"></div>
+
+<header id="bar">
+  <span class="title">Übersetzer</span>
+  <span class="spacer"></span>
+  <button id="btn-dock" title="Andocken / als Fenster lösen">⇱</button>
+  <button id="btn-settings" title="Einstellungen">⚙</button>
+  <button id="btn-hide" title="Verbergen (bleibt im Infobereich)">✕</button>
+</header>
+
+<main id="view-main">
+  <div class="row nowrap">
+    <select id="source" title="Ausgangssprache"></select>
+    <button id="btn-swap" title="Sprachen tauschen">⇄</button>
+    <select id="target" title="Zielsprache"></select>
+  </div>
+  <div class="row nowrap">
+    <select id="engine" title="Womit übersetzt wird"></select>
+    <select id="size" title="Lokales Modell">
+      <option value="small">Klein (schnell)</option>
+      <option value="medium">Mittel</option>
+      <option value="large">Groß (beste Qualität)</option>
+    </select>
+    <select id="style" title="Stil der Übersetzung"></select>
+  </div>
+
+  <textarea id="input" placeholder="Text eingeben oder einfügen … (Strg+Enter übersetzt)" spellcheck="false"></textarea>
+
+  <div class="row">
+    <button id="btn-translate" class="primary">Übersetzen</button>
+    <button id="btn-cancel" hidden>Abbrechen</button>
+    <button id="btn-paste" title="Zwischenablage einfügen und übersetzen">Einfügen</button>
+    <button id="btn-clear">Leeren</button>
+    <span class="spacer"></span>
+    <label class="check"><input type="checkbox" id="auto"> automatisch</label>
+  </div>
+
+  <div id="status" class="status"></div>
+
+  <div id="output" class="output" tabindex="0" contenteditable="plaintext-only" spellcheck="false"
+       title="Die Übersetzung lässt sich hier korrigieren und dann ins Phrasenbuch übernehmen"></div>
+
+  <div class="row">
+    <button id="btn-copy">Kopieren</button>
+    <button id="btn-save-phrase" title="Eingabe und (ggf. korrigierte) Ausgabe als festen Eintrag ins Phrasenbuch übernehmen">Ins Phrasenbuch</button>
+  </div>
+  <div id="meta" class="meta"></div>
+  <div id="warnings" class="warnings" hidden></div>
+  <details id="used" class="used" hidden>
+    <summary></summary>
+    <div id="used-list"></div>
+  </details>
+</main>
+
+<main id="view-settings" hidden>
+  <div class="row"><button id="btn-back">← Zurück</button><span class="spacer"></span></div>
+
+  <h2>Fenster</h2>
+  <label>Bildschirm <select id="set-monitor"></select></label>
+  <label>Seite
+    <select id="set-edge"><option value="right">rechts</option><option value="left">links</option></select>
+  </label>
+  <label>Breite in % <input type="number" id="set-width" min="10" max="70" step="1"></label>
+  <label class="check"><input type="checkbox" id="set-ontop"> Gelöstes Fenster immer im Vordergrund</label>
+  <label class="check"><input type="checkbox" id="set-autostart"> Mit Windows starten</label>
+  <label>Tastenkürzel Anzeigen/Verbergen <input type="text" id="set-hk-toggle"></label>
+  <label>Tastenkürzel Zwischenablage übersetzen <input type="text" id="set-hk-clip"></label>
+
+  <h2>Lokale Modelle</h2>
+  <p class="meta">Für jede Größe lässt sich ein Modell wählen: aus den gefundenen Modellen auf diesem PC oder über „Durchsuchen“ eine beliebige GGUF-Datei.</p>
+  <div id="set-model-rows"></div>
+  <div id="set-models" class="meta"></div>
+  <label>VRAM-Reserve für andere Programme (MB) <input type="number" id="set-reserve" min="0" step="256"></label>
+  <label>Modell nach Übersetzung geladen lassen (Sekunden, 0 = sofort entladen)
+    <input type="number" id="set-keep" min="0" step="5"></label>
+
+  <h2>Anbieter im Internet</h2>
+  <p class="meta">Alle standardmäßig aus. Ein eingeschalteter Anbieter erscheint in der Auswahl im Hauptfenster; solange er dort gewählt ist, wird der Text an ihn gesendet.</p>
+
+  <div class="card">
+    <label class="check"><input type="checkbox" id="p-claude_sub-on"> Claude-Abo (Pro/Max) über Claude Code</label>
+    <div id="p-claude_sub-state" class="meta"></div>
+    <label>Modell
+      <select id="p-claude_sub-model"><option value="haiku">Haiku (schnell)</option><option value="sonnet">Sonnet</option><option value="opus">Opus</option></select>
+    </label>
+  </div>
+
+  <div class="card">
+    <label class="check"><input type="checkbox" id="p-claude_api-on"> Claude-API (Abrechnung nach Verbrauch)</label>
+    <div id="p-claude_api-state" class="meta"></div>
+    <label>API-Schlüssel
+      <span class="row nowrap"><input type="password" id="p-claude_api-key"><button id="p-claude_api-clear" title="Gespeicherten Schlüssel löschen">✕</button></span>
+    </label>
+    <label>Modell <input type="text" id="p-claude_api-model"></label>
+  </div>
+
+  <div class="card">
+    <label class="check"><input type="checkbox" id="p-chatgpt_sub-on"> ChatGPT-Abo (Plus/Pro) über Codex</label>
+    <div id="p-chatgpt_sub-state" class="meta"></div>
+    <label>Modell (leer = Standard des Abos) <input type="text" id="p-chatgpt_sub-model"></label>
+  </div>
+
+  <div class="card">
+    <label class="check"><input type="checkbox" id="p-openai_api-on"> OpenAI-API oder kompatibler Anbieter</label>
+    <div id="p-openai_api-state" class="meta"></div>
+    <label>Adresse <input type="text" id="p-openai_api-base_url" placeholder="https://api.openai.com/v1"></label>
+    <label>API-Schlüssel
+      <span class="row nowrap"><input type="password" id="p-openai_api-key"><button id="p-openai_api-clear" title="Gespeicherten Schlüssel löschen">✕</button></span>
+    </label>
+    <label>Modell
+      <span class="row nowrap"><input type="text" id="p-openai_api-model" list="openai-models"><button id="p-openai_api-list">Modelle laden</button></span>
+    </label>
+    <datalist id="openai-models"></datalist>
+  </div>
+
+  <h2>Sprachen</h2>
+  <p class="meta">Angehakte Sprachen stehen im Hauptfenster zur Auswahl. Ein Sprachpaket ist dafür nicht nötig – es ergänzt feste Redewendungen für ein Sprachpaar.</p>
+  <div id="set-languages" class="grid"></div>
+  <h3>Sprachpakete</h3>
+  <div id="set-packs"></div>
+  <div class="row">
+    <button id="pack-file">Sprachpaket aus Datei …</button>
+  </div>
+  <div class="row nowrap">
+    <input type="text" id="pack-url" placeholder="https://… Adresse eines Sprachpakets (.zip)">
+    <button id="pack-download">Herunterladen</button>
+  </div>
+  <div id="pack-status" class="meta"></div>
+
+  <h2>Phrasengedächtnis</h2>
+  <label class="check"><input type="checkbox" id="set-vector"> Ähnliche Redewendungen finden (Vektordatenbank ChromaDB)</label>
+  <div id="set-memory" class="meta"></div>
+  <label class="check"><input type="checkbox" id="set-checks"> Übersetzung prüfen und bei Auffälligkeiten einmal neu versuchen</label>
+  <div class="row nowrap">
+    <select id="ph-source" title="Sprache links"></select>
+    <select id="ph-target" title="Sprache rechts"></select>
+  </div>
+  <div class="row nowrap">
+    <input type="text" id="ph-a" placeholder="Redewendung">
+    <input type="text" id="ph-b" placeholder="Übersetzung">
+    <button id="ph-add">+</button>
+  </div>
+  <input type="text" id="ph-filter" placeholder="Suchen …">
+  <div id="ph-list"></div>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

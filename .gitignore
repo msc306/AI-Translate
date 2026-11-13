@@ -1,0 +1,28 @@
+# Not part of the program
+Kursinhalt/
+
+# Large or generated
+models/
+node_modules/
+src-tauri/target/
+src-tauri/gen/
+.venv/
+__pycache__/
+*.pyc
+
+# Local data, logs and test output
+.testdata/
+sidecar/evals/results/
+*.log
+config.json
+.env
+.env.*
+
+# Editors and Claude Code
+.vscode/
+.idea/
+.claude/
+
+# Icons for platforms this Windows app does not target
+src-tauri/icons/android/
+src-tauri/icons/ios/

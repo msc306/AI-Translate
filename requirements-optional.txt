@@ -1,0 +1,4 @@
+# Optional: semantic search in the phrase memory. Without these packages the translator
+# still works and uses literal phrase matches only.
+chromadb>=1.5,<2
+fastembed>=0.9,<1

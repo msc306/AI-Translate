@@ -1,0 +1,10 @@
+{
+  "id": "de-en",
+  "name": "Deutsch ↔ Englisch",
+  "version": "1.0.0",
+  "languages": [
+    { "code": "de", "name": "German", "label": "Deutsch" },
+    { "code": "en", "name": "English", "label": "Englisch" }
+  ],
+  "style_notes": "When translating into German, use the informal \"du\" unless the source text is clearly formal."
+}
