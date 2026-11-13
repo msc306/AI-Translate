@@ -2,6 +2,22 @@
 
 Requests carry "cmd" and "id"; every answer repeats the id and has an "event".
 The core uses the standard library only. ChromaDB (semantic phrase search) is optional.
+
+Commands and the events that answer them:
+  translate {text, engine?, size?, source?, target?, style?, thorough?, clarify?, clarification?, history?}
+      -> status*, delta*, replace* (the whole output so far, replaces what was shown), progress*,
+         then done | question {question, options[{label, meaning}]} | error.
+         After a question, send translate again with "clarification" set to the chosen meaning.
+  explain {text, translation, source?, target?, engine?, size?} -> explanation {summary, alternatives, notes}
+  cancel | unload | shutdown
+  status -> status_info        vram -> vram        set_config {config} -> config
+  phrases | phrase_save | phrase_delete -> phrases        phrases_export {path} -> exported
+  history {query?, corrected_only?} | history_correct {entry_id, text} | history_delete {entry_id}
+      | history_clear -> history {total, items}
+  history_export {path, format?: csv|json|md, corrected_only?} -> exported {path, count}
+  pack_install {path | url} -> pack_installed        pack_remove {pack} -> pack_removed
+  pack_index -> pack_index        provider_models -> provider_models
+Failures are reported as error {code, message}.
 """
 import argparse
 import json
@@ -14,6 +30,7 @@ import urllib.request
 from pathlib import Path
 
 import checks
+import history
 import gpu
 import languages
 import local_engine
@@ -57,6 +74,9 @@ DEFAULT_CONFIG = {
     "memory": {"vector": True, "min_similarity": 0.7, "max_hints": 3},
     "checks": {"enabled": True, "retry": True},
     "packs": {"index_url": ""},
+    "history": {"enabled": True, "limit": 500},
+    "clarify": False,   # ask before translating a short ambiguous text
+    "thorough": False,  # second pass: the model reviews and corrects its own draft
 }
 
 MODEL_PREFERENCES = {
@@ -66,6 +86,8 @@ MODEL_PREFERENCES = {
 }
 SIZES = ("small", "medium", "large")
 CONTEXT_CHARS = 600
+CLARIFY_CHARS = 300   # only short texts are checked for ambiguity
+EXPLAIN_CHARS = 1500
 
 
 def deep_merge(base: dict, override: dict) -> dict:
@@ -92,6 +114,7 @@ class Sidecar:
         self.user_dir = config_path.parent
         self.book = phrases.PhraseBook(self._load_packs(), self.user_dir / "phrases.json")
         self.index = VectorIndex(self.user_dir / "memory")
+        self.history = history.History(self.user_dir / "history.json")
         self.cancel = threading.Event()
         self.worker: threading.Thread | None = None
         self.server: local_engine.LlamaServer | None = None
@@ -292,6 +315,107 @@ class Sidecar:
                     similar.append({**entry, "match": "similar", "similarity": hit["similarity"]})
         return hints, similar
 
+    def _open(self, req_id, req: dict, full: dict) -> dict:
+        """Prepare the engine for one request: load the local model or pick the cloud provider."""
+        cfg = full["engine"]
+        engine = req.get("engine") or cfg.get("default") or "local"
+        session = {"engine": engine, "size": None, "server": None, "load_seconds": 0.0,
+                   "vram_before": None, "was_loaded": False, "usage": providers.new_usage()}
+        if engine == "local":
+            session["size"] = req.get("size") or cfg["model"]
+            model_path = self.resolve_model(session["size"], cfg)
+            session["model"] = model_path.stem
+            session["vram_before"] = gpu.vram_mb(cfg["gpu_index"])
+            session["was_loaded"] = self.server is not None
+            session["server"], session["load_seconds"] = self._ensure_server(req_id, model_path, cfg)
+        else:
+            session["model"] = (full["providers"].get(engine) or {}).get("model") or ""
+
+        def run(messages, max_tokens):
+            if engine == "local":
+                return session["server"].chat_stream(messages, max_tokens, self.cancel)
+            return providers.stream(engine, messages, full["providers"], self.cancel, session["usage"])
+        session["run"] = run
+        return session
+
+    def _close(self, req_id, session: dict, cfg: dict, keep_seconds: float = 0) -> None:
+        if session["engine"] == "local":
+            emit({"id": req_id, "event": "status", "stage": "unloading"})
+            keep = max(float(cfg.get("keep_loaded_seconds") or 0), keep_seconds)
+            self._release({**cfg, "keep_loaded_seconds": keep})
+
+    def _report(self, session: dict, cfg: dict) -> dict:
+        """Fields about the engine for the final event."""
+        report = {"engine": session["engine"], "model": session["model"], "size": session["size"]}
+        usage = session["usage"]
+        if session["engine"] == "local":
+            before = session["vram_before"]
+            unloaded = self.server is None
+            if unloaded and before and not session["was_loaded"]:
+                after = local_engine.wait_vram_released(before["free"], cfg["gpu_index"])
+            else:
+                after = gpu.vram_mb(cfg["gpu_index"])
+            report.update(unloaded=unloaded, load_seconds=round(session["load_seconds"], 2),
+                          vram_free_before_mb=before["free"] if before else None,
+                          vram_free_after_mb=after["free"] if after else None)
+        elif usage["input_tokens"] or usage["output_tokens"]:
+            report["usage"] = {"input_tokens": usage["input_tokens"], "output_tokens": usage["output_tokens"],
+                               "cost_usd": round(usage["cost_usd"], 6) if usage["cost_known"] else None}
+        return report
+
+    @staticmethod
+    def _ask_json(session: dict, messages: list, max_tokens: int):
+        """Run one request whose answer is a JSON object; None when the answer is unusable."""
+        return prompting.parse_json("".join(session["run"](messages, max_tokens)))
+
+    def _clarify(self, session: dict, text: str, src_name: str, tgt_name: str):
+        """Return (question, options) when the model finds the text ambiguous, else None."""
+        data = self._ask_json(session, prompting.clarify_messages(text, src_name, tgt_name), 400)
+        if not data or data.get("ambiguous") is not True:
+            return None
+        options = [{"label": str(o.get("label") or "").strip()[:80],
+                    "meaning": str(o.get("meaning") or "").strip()[:300]}
+                   for o in data.get("options") or [] if isinstance(o, dict)]
+        options = [o for o in options if o["label"] and o["meaning"]][:3]
+        question = str(data.get("question") or "").strip()[:200]
+        return (question or "Was ist gemeint?", options) if len(options) >= 2 else None
+
+    def explain(self, req: dict) -> None:
+        req_id = req.get("id")
+        try:
+            text, translation = (req.get("text") or "").strip(), (req.get("translation") or "").strip()
+            if not text or not translation:
+                raise EngineError("nothing_to_explain", "Es gibt noch keine Übersetzung zum Erklären.")
+            if len(text) > EXPLAIN_CHARS:
+                raise EngineError("too_long", f"Erklären geht nur für Texte bis {EXPLAIN_CHARS} Zeichen.")
+            full = self.config()
+            source, target = req.get("source"), req.get("target")
+            if source not in languages.CATALOG or target not in languages.CATALOG:
+                source, target = self._direction(req, text, full["languages"]["enabled"])
+            session = self._open(req_id, req, full)
+            emit({"id": req_id, "event": "status", "stage": "explaining"})
+            try:
+                data = self._ask_json(session, prompting.explain_messages(
+                    text, translation, languages.name(source), languages.name(target)), len(text) + 900)
+            finally:
+                self._close(req_id, session, full["engine"])
+            if not data:
+                raise EngineError("explain_failed", "Das Modell hat keine verwertbare Erklärung geliefert.")
+
+            def rows(key, first):
+                found = []
+                for row in data.get(key) or []:
+                    if isinstance(row, dict) and str(row.get(first) or "").strip():
+                        found.append({first: str(row[first]).strip(), "note": str(row.get("note") or "").strip()})
+                return found[:4]
+            emit({"id": req_id, "event": "explanation", "summary": str(data.get("summary") or "").strip(),
+                  "alternatives": rows("alternatives", "text"), "notes": rows("notes", "source"),
+                  "source": source, "target": target, **self._report(session, full["engine"])})
+        except EngineError as err:
+            emit({"id": req_id, "event": "error", "code": err.code, "message": str(err), **err.extra})
+        except Exception as err:  # never let the worker die silently
+            emit({"id": req_id, "event": "error", "code": "internal", "message": f"{type(err).__name__}: {err}"})
+
     def translate(self, req: dict) -> None:
         req_id = req.get("id")
         started = time.monotonic()
@@ -321,31 +445,16 @@ class Sidecar:
                                    if p.style_notes and pair <= set(p.codes))
             src_name, tgt_name = languages.name(source), languages.name(target)
 
-            size = model_name = None
-            server = None
-            load_seconds = 0.0
-            vram_before = None
-            was_loaded = False
-            if engine == "local":
-                size = req.get("size") or cfg["model"]
-                model_path = self.resolve_model(size, cfg)
-                model_name = model_path.stem
-                vram_before = gpu.vram_mb(cfg["gpu_index"])
-                was_loaded = self.server is not None
-                server, load_seconds = self._ensure_server(req_id, model_path, cfg)
-            else:
-                model_name = (full["providers"].get(engine) or {}).get("model") or ""
-
-            usage = providers.new_usage()
-
-            def run(messages, chunk):
-                if engine == "local":
-                    return server.chat_stream(messages, len(chunk) // 2 + 256, self.cancel)
-                return providers.stream(engine, messages, full["providers"], self.cancel, usage)
+            chunks = textutil.chunk_text(text)
+            clarification = str(req.get("clarification") or "").strip()
+            thorough = bool(req.get("thorough", full.get("thorough")))
+            ask = (bool(req.get("clarify", full.get("clarify"))) and not clarification
+                   and len(chunks) == 1 and len(text) <= CLARIFY_CHARS)
+            session = self._open(req_id, req, full)
 
             def stream_chunk(messages, chunk):
                 parts = []
-                for piece in run(messages, chunk):
+                for piece in session["run"](messages, len(chunk) // 2 + 256):
                     if not parts:
                         piece = piece.lstrip()
                         if not piece:
@@ -358,12 +467,24 @@ class Sidecar:
                     emit({"id": req_id, "event": "replace", "text": done_text + clean})
                 return clean
 
-            emit({"id": req_id, "event": "status", "stage": "translating"})
-            chunks = textutil.chunk_text(text)
             done_text = ""
             used, problems = {}, []
+            review = {"changed": 0, "issues": []}
             previous = None
+            closed = False
             try:
+                if ask:
+                    emit({"id": req_id, "event": "status", "stage": "clarify"})
+                    found = self._clarify(session, text, src_name, tgt_name)
+                    if found:
+                        # The answer usually follows at once: keep the model for it. Release before the
+                        # question goes out, so that the question is the last event of this request.
+                        self._close(req_id, session, cfg, 90)
+                        closed = True
+                        emit({"id": req_id, "event": "question", "question": found[0], "options": found[1],
+                              "source": source, "target": target})
+                        return
+                emit({"id": req_id, "event": "status", "stage": "translating"})
                 for number, (chunk, separator) in enumerate(chunks):
                     hints, similar = self._memory(chunk, source, target, full)
                     for entry in hints + similar:
@@ -371,7 +492,7 @@ class Sidecar:
                     kwargs = dict(
                         hints=[(h["source"], h["target"]) for h in hints],
                         similar=[(s["source"], s["target"]) for s in similar],
-                        style=style, style_notes=style_notes, context=previous)
+                        style=style, style_notes=style_notes, context=previous, clarification=clarification)
                     output = stream_chunk(prompting.build_messages(chunk, src_name, tgt_name, **kwargs), chunk)
 
                     failed = checks.check(chunk, output, source, target) if full["checks"].get("enabled") else []
@@ -386,6 +507,20 @@ class Sidecar:
                         if code not in problems:
                             problems.append(code)
 
+                    if thorough and output.strip():
+                        emit({"id": req_id, "event": "status", "stage": "review"})
+                        verdict = self._ask_json(session, prompting.review_messages(
+                            chunk, output, src_name, tgt_name, style), len(chunk) + 500) or {}
+                        improved = prompting.strip_wrapper(str(verdict.get("improved") or "")).strip()
+                        issues = [str(i).strip() for i in verdict.get("issues") or [] if str(i).strip()][:5]
+                        # Take the correction only when it names an error and passes the same checks.
+                        if (issues and improved and improved != output.strip()
+                                and not checks.check(chunk, improved, source, target)):
+                            output = improved
+                            review["changed"] += 1
+                            review["issues"] += issues
+                            emit({"id": req_id, "event": "replace", "text": done_text + output})
+
                     done_text += output + separator
                     if separator:
                         emit({"id": req_id, "event": "delta", "text": separator})
@@ -393,26 +528,19 @@ class Sidecar:
                         emit({"id": req_id, "event": "progress", "chunk": number + 1, "chunks": len(chunks)})
                     previous = (chunk[-CONTEXT_CHARS:], output[-CONTEXT_CHARS:])
             finally:
-                if engine == "local":
-                    emit({"id": req_id, "event": "status", "stage": "unloading"})
-                    self._release(cfg)
+                if not closed:
+                    self._close(req_id, session, cfg)
 
-            done = {"id": req_id, "event": "done", "engine": engine, "model": model_name, "size": size,
+            done = {"id": req_id, "event": "done", **self._report(session, cfg),
                     "source": source, "target": target, "style": style,
                     "used": list(used.values()), "warnings": checks.warnings(problems),
                     "seconds": round(time.monotonic() - started, 2)}
-            if engine == "local":
-                unloaded = self.server is None
-                if unloaded and vram_before and not was_loaded:
-                    vram_after = local_engine.wait_vram_released(vram_before["free"], cfg["gpu_index"])
-                else:
-                    vram_after = gpu.vram_mb(cfg["gpu_index"])
-                done.update(unloaded=unloaded, load_seconds=round(load_seconds, 2),
-                            vram_free_before_mb=vram_before["free"] if vram_before else None,
-                            vram_free_after_mb=vram_after["free"] if vram_after else None)
-            elif usage["input_tokens"] or usage["output_tokens"]:
-                done["usage"] = {"input_tokens": usage["input_tokens"], "output_tokens": usage["output_tokens"],
-                                 "cost_usd": round(usage["cost_usd"], 6) if usage["cost_known"] else None}
+            if thorough:
+                done["review"] = review
+            if full["history"].get("enabled") and req.get("history", True):
+                done["history_id"] = self.history.add(
+                    limit=int(full["history"].get("limit") or 500), source=source, target=target,
+                    engine=engine, model=session["model"], style=style, source_text=text, output=done_text)
             emit(done)
         except EngineError as err:
             emit({"id": req_id, "event": "error", "code": err.code, "message": str(err), **err.extra})
@@ -484,11 +612,34 @@ class Sidecar:
     def handle(self, req: dict) -> bool:
         cmd = req.get("cmd")
         req_id = req.get("id")
-        if cmd == "translate":
+        if cmd in ("translate", "explain"):
             self.stop_worker()
             self.cancel.clear()
-            self.worker = threading.Thread(target=self.translate, args=(req,), daemon=True)
+            job = self.translate if cmd == "translate" else self.explain
+            self.worker = threading.Thread(target=job, args=(req,), daemon=True)
             self.worker.start()
+        elif cmd in ("history", "history_correct", "history_delete", "history_clear"):
+            if cmd == "history_correct":
+                self.history.correct(req.get("entry_id") or "", req.get("text") or "")
+            elif cmd == "history_delete":
+                self.history.delete(req.get("entry_id") or "")
+            elif cmd == "history_clear":
+                self.history.clear()
+            emit({"id": req_id, "event": "history", "total": len(self.history.entries),
+                  "items": self.history.items(req.get("query") or "", bool(req.get("corrected_only")))})
+        elif cmd in ("history_export", "phrases_export"):
+            try:
+                path = Path(req.get("path") or "")
+                if not path.name or not path.parent.is_dir():
+                    raise ValueError("Kein gültiger Speicherort.")
+                if cmd == "history_export":
+                    count = self.history.export(path, req.get("format") or path.suffix.lstrip(".").lower(),
+                                                bool(req.get("corrected_only")))
+                else:
+                    count = self.book.export_pack(path)
+                emit({"id": req_id, "event": "exported", "path": str(path), "count": count})
+            except (ValueError, OSError) as err:
+                emit({"id": req_id, "event": "error", "code": "export_failed", "message": str(err)})
         elif cmd == "cancel":
             self.cancel.set()
             emit({"id": req_id, "event": "cancelled"})

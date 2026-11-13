@@ -17,6 +17,10 @@ const state = {
   phrases: [],
   autoTimer: null,
   pendingPack: null,
+  explainId: null,
+  history: [],
+  quietHistoryId: null,
+  sentCorrection: "",
 };
 
 const STAGES = {
@@ -26,6 +30,9 @@ const STAGES = {
   translating: "Übersetze …",
   retry: "Ergebnis auffällig – versuche es noch einmal …",
   unloading: "Gebe Grafikspeicher frei …",
+  clarify: "Prüfe, ob der Text eindeutig ist …",
+  review: "Prüfe die Übersetzung noch einmal …",
+  explaining: "Erkläre die Übersetzung …",
 };
 const SIZE_LABELS = { small: "Klein", medium: "Mittel", large: "Groß" };
 const PROVIDERS = ["claude_sub", "claude_api", "chatgpt_sub", "openai_api"];
@@ -64,6 +71,17 @@ function languageLabel(code) {
   return state.info?.languages.catalog.find((l) => l.code === code)?.label || code.toUpperCase();
 }
 
+function showView(name) {
+  for (const view of ["main", "settings", "history"]) $("view-" + view).hidden = view !== name;
+}
+
+/** Show a short message where the user is looking right now. */
+function note(text) {
+  if (!$("view-history").hidden) $("hist-note").textContent = text;
+  else if (!$("view-settings").hidden) $("pack-status").textContent = text;
+  else setStatus(text);
+}
+
 // ---------- Übersetzen ----------
 
 function clearResult() {
@@ -74,9 +92,12 @@ function clearResult() {
   $("meta").textContent = "";
   $("warnings").hidden = true;
   $("used").hidden = true;
+  $("question").hidden = true;
+  $("explain").hidden = true;
+  state.explainId = null;
 }
 
-function translate() {
+function translate(extra = {}) {
   const text = $("input").value;
   clearTimeout(state.autoTimer);
   clearResult();
@@ -96,7 +117,86 @@ function translate() {
     engine,
     size: $("size").value,
     style: $("style").value || "neutral",
+    thorough: $("thorough").checked,
+    clarify: $("clarify").checked,
+    ...extra,
   });
+}
+
+/** The model found the text ambiguous: let the user pick a reading, then translate with it. */
+function onQuestion(e) {
+  setBusy(false);
+  setStatus("");
+  $("question-text").textContent = e.question;
+  const buttons = (e.options || []).map((option) => {
+    const button = el("button", { textContent: option.label, title: option.meaning });
+    button.onclick = () => translate({ clarification: option.meaning });
+    return button;
+  });
+  const skip = el("button", { textContent: "Egal, einfach übersetzen" });
+  skip.onclick = () => translate({ clarify: false });
+  $("question-options").replaceChildren(...buttons, skip);
+  $("question").hidden = false;
+}
+
+/** Remember an edited translation in the history, so it can be exported or saved as a phrase later. */
+function noteCorrection() {
+  const done = state.lastDone;
+  const text = $("output").textContent.trim();
+  if (state.busy || !done?.history_id || !text || $("output").classList.contains("error")) return;
+  if (text === state.sentCorrection) return;
+  state.sentCorrection = text;
+  state.quietHistoryId = send({ cmd: "history_correct", entry_id: done.history_id, text });
+}
+
+function explain() {
+  const done = state.lastDone;
+  const translation = $("output").textContent.trim();
+  if (state.busy || !done || !translation || $("output").classList.contains("error")) {
+    setStatus("Es gibt noch keine Übersetzung zum Erklären.");
+    return;
+  }
+  setBusy(true);
+  setStatus(STAGES.explaining, true);
+  $("explain").hidden = true;
+  state.explainId = send({
+    cmd: "explain",
+    text: state.lastRequest?.text || "",
+    translation,
+    source: done.source,
+    target: done.target,
+    engine: $("engine").value || "local",
+    size: $("size").value,
+  });
+}
+
+function onExplanation(e) {
+  if (e.id !== state.explainId) return;
+  state.explainId = null;
+  setBusy(false);
+  setStatus("");
+  const nodes = [el("div", { textContent: e.summary || "Keine Besonderheiten." })];
+  if (e.alternatives?.length) {
+    nodes.push(el("h3", { textContent: "Alternativen" }));
+    for (const alt of e.alternatives) {
+      const take = el("button", { textContent: "Übernehmen" });
+      take.onclick = () => {
+        $("output").textContent = alt.text;
+        noteCorrection();
+      };
+      nodes.push(el("div", { className: "alt" },
+        el("div", {}, el("div", { textContent: alt.text }), el("div", { className: "note", textContent: alt.note })),
+        take));
+    }
+  }
+  if (e.notes?.length) {
+    nodes.push(el("h3", { textContent: "Anmerkungen" }));
+    for (const item of e.notes) {
+      nodes.push(el("div", {}, el("strong", { textContent: item.source }), el("span", { className: "note", textContent: " – " + item.note })));
+    }
+  }
+  $("explain").replaceChildren(...nodes);
+  $("explain").hidden = false;
 }
 
 function scheduleAuto(delay) {
@@ -111,6 +211,7 @@ function onDone(e) {
   setBusy(false);
   setStatus("");
   state.lastDone = e;
+  state.sentCorrection = state.output.trim();
   const parts = [];
   if (e.source && e.target) parts.push(`${languageLabel(e.source)} → ${languageLabel(e.target)}`);
   if (e.engine === "phrasebook") parts.push("Phrasenbuch");
@@ -128,11 +229,13 @@ function onDone(e) {
       parts.push(usage);
     }
   }
+  if (e.review) parts.push(e.review.changed ? "gründlich geprüft und korrigiert" : "gründlich geprüft");
   $("meta").textContent = parts.join(" · ");
 
-  const warnings = e.warnings || [];
-  $("warnings").hidden = !warnings.length;
-  $("warnings").textContent = warnings.map((w) => "⚠ " + w.message).join("\n");
+  const lines = (e.warnings || []).map((w) => "⚠ " + w.message)
+    .concat((e.review?.issues || []).map((issue) => "✎ Korrigiert: " + issue));
+  $("warnings").hidden = !lines.length;
+  $("warnings").textContent = lines.join("\n");
 
   const used = e.used || [];
   $("used").hidden = !used.length;
@@ -204,7 +307,28 @@ function onSidecar(e) {
     case "sidecar_exit":
       showError("Der Übersetzungsdienst wurde beendet. Bitte die App neu starten.");
       break;
+    case "history":
+      state.history = e.items || [];
+      if (e.id === state.quietHistoryId) state.quietHistoryId = null;
+      else renderHistory();
+      break;
+    case "exported":
+      note(`${e.count} Einträge gespeichert: ${e.path}`);
+      break;
+    case "explanation":
+      onExplanation(e);
+      break;
     case "error":
+      if (e.id === state.explainId) {
+        state.explainId = null;
+        setBusy(false);
+        setStatus(e.code === "cancelled" ? "Abgebrochen." : e.message);
+        return;
+      }
+      if (e.code === "export_failed") {
+        note(e.message);
+        return;
+      }
       if (e.id !== state.translateId || ["pack_failed", "phrase_invalid"].includes(e.code)) {
         if (e.code === "pack_failed" || e.code === "phrase_invalid") onError(e);
         else if (!$("view-settings").hidden) setSettingsNote(e.message);
@@ -213,6 +337,10 @@ function onSidecar(e) {
       onError(e);
       break;
     default:
+      if (e.id === state.explainId && e.event === "status") {
+        setStatus(STAGES[e.stage] || e.stage, true);
+        return;
+      }
       if (e.id !== state.translateId) return;
       if (e.event === "status") setStatus(STAGES[e.stage] || e.stage, true);
       else if (e.event === "progress") setStatus(`Übersetze … Abschnitt ${e.chunk} von ${e.chunks}`, true);
@@ -223,6 +351,7 @@ function onSidecar(e) {
         box.textContent = state.output;
         if (atEnd) box.scrollTop = box.scrollHeight;
       } else if (e.event === "done") onDone(e);
+      else if (e.event === "question") onQuestion(e);
       else if (e.event === "cancelled") { setBusy(false); setStatus("Abgebrochen."); }
   }
 }
@@ -377,6 +506,7 @@ function renderSettings(info) {
   $("set-keep").value = config.engine.keep_loaded_seconds;
   $("set-vector").checked = !!config.memory.vector;
   $("set-checks").checked = !!config.checks.enabled;
+  $("set-history").checked = config.history?.enabled !== false;
   const memory = info.memory || {};
   $("set-memory").textContent = {
     off: "Aus – es werden nur wörtlich passende Einträge verwendet.",
@@ -432,6 +562,68 @@ function savePhrase(source, target, sourceText, targetText) {
   return true;
 }
 
+// ---------- Verlauf ----------
+
+function historyCommand(cmd, extra = {}) {
+  return send({ cmd, query: $("hist-filter").value, corrected_only: $("hist-corrected").checked, ...extra });
+}
+
+function openHistory() {
+  showView("history");
+  $("hist-note").textContent = "Die Übersetzung eines Eintrags lässt sich direkt hier korrigieren und mit ★ als Phrase speichern.";
+  historyCommand("history");
+}
+
+function renderHistory() {
+  const list = $("hist-list");
+  if (!state.history.length) {
+    list.replaceChildren(el("div", { className: "meta", textContent: "Keine Einträge." }));
+    return;
+  }
+  list.replaceChildren(...state.history.map((entry) => {
+    const current = () => (entry.corrected || entry.output || "").trim();
+    const tag = el("span", { className: "tag", textContent: "korrigiert", hidden: !entry.corrected });
+    const out = el("div", {
+      className: "out", contentEditable: "plaintext-only", spellcheck: false,
+      textContent: current(), title: "Zum Korrigieren hineinklicken",
+    });
+    // No re-render after this save: a click on a button of the same entry must still land.
+    out.onblur = () => {
+      const text = out.textContent.trim();
+      if (!text || text === current()) return;
+      entry.corrected = text === (entry.output || "").trim() ? "" : text;
+      tag.hidden = !entry.corrected;
+      state.quietHistoryId = historyCommand("history_correct", { entry_id: entry.id, text });
+    };
+    const load = el("button", { textContent: "↩", title: "In den Übersetzer laden" });
+    load.onclick = () => {
+      clearResult();
+      $("input").value = entry.source_text;
+      state.lastRequest = { text: entry.source_text };
+      state.output = current();
+      state.sentCorrection = state.output;
+      $("output").textContent = state.output;
+      state.lastDone = { source: entry.source, target: entry.target, history_id: entry.id };
+      $("meta").textContent = `${languageLabel(entry.source)} → ${languageLabel(entry.target)} · aus dem Verlauf vom ${entry.time}`;
+      showView("main");
+    };
+    const star = el("button", { textContent: "★", title: "Als Phrase speichern (mit deiner Korrektur)" });
+    star.onclick = () => {
+      const ok = savePhrase(entry.source, entry.target, entry.source_text, out.textContent);
+      note(ok ? "Als Phrase gespeichert – gilt ab der nächsten Übersetzung." : "Nichts zu speichern.");
+    };
+    const remove = el("button", { textContent: "✕", title: "Eintrag löschen" });
+    remove.onclick = () => historyCommand("history_delete", { entry_id: entry.id });
+    const engine = state.info?.engines.find((x) => x.id === entry.engine)?.label || entry.engine;
+    return el("div", { className: "hist" },
+      el("div", { className: "head" },
+        el("span", { textContent: `${entry.time} · ${languageLabel(entry.source)} → ${languageLabel(entry.target)} · ${engine}` }),
+        tag, el("span", { className: "spacer" }), load, star, remove),
+      el("div", { className: "src", textContent: entry.source_text }),
+      out);
+  }));
+}
+
 // ---------- Fenster ----------
 
 function applyLayout(layout) {
@@ -457,8 +649,7 @@ async function setLayout(patch) {
 }
 
 async function openSettings() {
-  $("view-main").hidden = true;
-  $("view-settings").hidden = false;
+  showView("settings");
   const monitors = await invoke("list_monitors");
   const select = $("set-monitor");
   select.replaceChildren();
@@ -597,6 +788,7 @@ async function init() {
       setStatus("Nichts zu speichern.");
       return;
     }
+    noteCorrection();
     const ok = savePhrase(done.source, done.target, state.lastRequest?.text || "", $("output").textContent);
     setStatus(ok ? "Ins Phrasenbuch übernommen – gilt ab der nächsten Übersetzung." : "Nichts zu speichern.");
   };
@@ -604,9 +796,42 @@ async function init() {
   $("btn-dock").onclick = async () => applyLayout(await invoke("toggle_dock"));
   $("btn-hide").onclick = () => invoke("hide_window");
   $("btn-settings").onclick = openSettings;
-  $("btn-back").onclick = () => {
-    $("view-settings").hidden = true;
-    $("view-main").hidden = false;
+  $("btn-back").onclick = $("btn-history-back").onclick = () => showView("main");
+  $("btn-explain").onclick = explain;
+  $("output").addEventListener("blur", noteCorrection);
+  for (const id of ["thorough", "clarify"]) {
+    $(id).checked = localStorage.getItem(id) === "1";
+    $(id).onchange = () => localStorage.setItem(id, $(id).checked ? "1" : "0");
+  }
+
+  $("btn-history").onclick = openHistory;
+  let filterTimer = null;
+  $("hist-filter").oninput = () => {
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(() => historyCommand("history"), 250);
+  };
+  $("hist-corrected").onchange = () => historyCommand("history");
+  $("hist-export").onclick = async () => {
+    const format = $("hist-format").value;
+    const path = await invoke("pick_save", { kind: format, name: `uebersetzungen.${format}` });
+    if (path) send({ cmd: "history_export", path, format, corrected_only: $("hist-corrected").checked });
+  };
+  let clearArmed = null;
+  $("hist-clear").onclick = () => {
+    if (!clearArmed) {  // second click within four seconds confirms
+      $("hist-clear").textContent = "Wirklich alles löschen?";
+      clearArmed = setTimeout(() => { clearArmed = null; $("hist-clear").textContent = "Alles löschen"; }, 4000);
+      return;
+    }
+    clearTimeout(clearArmed);
+    clearArmed = null;
+    $("hist-clear").textContent = "Alles löschen";
+    historyCommand("history_clear");
+  };
+  $("set-history").onchange = () => setConfig({ history: { enabled: $("set-history").checked } });
+  $("ph-export").onclick = async () => {
+    const path = await invoke("pick_save", { kind: "pack", name: "meine-phrasen.zip" });
+    if (path) send({ cmd: "phrases_export", path });
   };
 
   $("set-monitor").onchange = () => setLayout({ monitor: $("set-monitor").value });
@@ -652,8 +877,7 @@ async function init() {
 async function pasteAndTranslate() {
   const text = await invoke("read_clipboard");
   if (!text) return;
-  $("view-settings").hidden = true;
-  $("view-main").hidden = false;
+  showView("main");
   $("input").value = text;
   translate();
 }

@@ -262,3 +262,18 @@ class PhraseBook:
         self._store()
         self._build()
         return True
+
+    def export_pack(self, path: Path, name: str = "Eigene Phrasen") -> int:
+        """Write the user's own entries as a language pack (zip) that others can install."""
+        entries = [e["texts"] for e in self.user_entries if len(e.get("texts") or {}) >= 2]
+        if not entries:
+            raise ValueError("Es gibt noch keine eigenen Einträge.")
+        codes = sorted({code for texts in entries for code in texts})
+        pack_id = re.sub(r"[^a-z0-9-]", "-", path.stem.lower()).strip("-")[:40]
+        if len(pack_id) < 2 or not pack_id[0].isalnum():
+            pack_id = "eigene-phrasen"
+        manifest = {"id": pack_id, "name": name, "version": "1.0.0", "languages": [{"code": c} for c in codes]}
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+            archive.writestr("phrases.json", json.dumps({"phrases": entries}, ensure_ascii=False, indent=2))
+        return len(entries)

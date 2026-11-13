@@ -3,7 +3,9 @@
 Options:  --vector   also test the ChromaDB index (downloads the embedding model on first run)
           --claude   also translate one sentence through the Claude subscription (needs a login)
 """
+import csv
 import json
+import subprocess
 import sys
 import tempfile
 import threading
@@ -14,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.stdout.reconfigure(encoding="utf-8")
 
 import checks
+import history
 import languages
 import main as sidecar_main
 import phrases
@@ -198,12 +201,247 @@ def test_claude_subscription():
         expect("claude subscription translates", False, str(err))
 
 
+def test_history_and_export():
+    with tempfile.TemporaryDirectory() as work:
+        work = Path(work)
+        log = history.History(work / "history.json", limit=3)
+        first = log.add(source="de", target="en", engine="local", model="m", style="neutral",
+                        source_text="Guten Morgen", output="Good morning")
+        second = log.add(source="de", target="en", engine="local", model="m", style="neutral",
+                         source_text="Das ist; ein \"Test\"", output="This is a test")
+        expect("history lists newest first", [e["id"] for e in log.items()] == [second, first])
+        expect("history search", [e["id"] for e in log.items(query="morgen")] == [first])
+        expect("correction is stored", log.correct(second, "This is; a \"test\"")
+               and log.get(second)["corrected"] == "This is; a \"test\"")
+        expect("same text is no correction", log.correct(first, "Good morning") and not log.get(first)["corrected"])
+        expect("filter corrected only", [e["id"] for e in log.items(corrected_only=True)] == [second])
+        expect("history survives a restart",
+               len(history.History(work / "history.json").items()) == 2)
+
+        expect("csv export counts", log.export(work / "out.csv", "csv") == 2)
+        with open(work / "out.csv", encoding="utf-8-sig", newline="") as handle:
+            rows = list(csv.reader(handle, delimiter=";"))
+        expect("csv keeps quotes and separators", len(rows) == 3 and "This is; a \"test\"" in rows[1], str(rows))
+        expect("json export of corrections", log.export(work / "out.json", "json", corrected_only=True) == 1
+               and "Das ist" in (work / "out.json").read_text(encoding="utf-8"))
+        expect("markdown export", log.export(work / "out.md", "md") == 2
+               and "Guten Morgen" in (work / "out.md").read_text(encoding="utf-8"))
+        try:
+            log.export(work / "out.xyz", "xyz")
+            expect("unknown export format is refused", False)
+        except ValueError:
+            expect("unknown export format is refused", True)
+
+        for n in range(3):
+            log.add(source="de", target="en", engine="local", model="m", style="neutral",
+                    source_text=f"Text {n}", output=f"Text {n}")
+        expect("history is capped", len(log.items()) == 3 and log.get(first) is None)
+        log.delete(log.items()[0]["id"])
+        expect("history delete", len(log.items()) == 2)
+        log.clear()
+        expect("history clear", log.items() == [])
+
+        # corrections saved as phrases can be exported as a pack and installed again
+        book = phrases.PhraseBook({}, work / "phrases.json")
+        try:
+            book.export_pack(work / "empty.zip")
+            expect("empty phrase export is refused", False)
+        except ValueError:
+            expect("empty phrase export is refused", True)
+        book.save("de", "en", "Das ist ein Test", "This is a trial")
+        expect("phrase export counts", book.export_pack(work / "mine.zip") == 1)
+        pack_id = phrases.install_pack(work / "mine.zip", work / "packs")
+        again = phrases.PhraseBook(phrases.load_packs((work / "packs", "user")), work / "other.json")
+        hit = again.exact("das ist ein test", "de", "en")
+        expect("exported pack installs and translates", bool(pack_id) and hit and hit[0] == "This is a trial", str(hit))
+
+
+def test_json_answers():
+    expect("plain json", prompting.parse_json('{"a": 1}') == {"a": 1})
+    expect("json in a code fence", prompting.parse_json('```json\n{"a": 1}\n```') == {"a": 1})
+    expect("json with text around it", prompting.parse_json('Sure:\n{"a": {"b": "}"}}\nDone.') == {"a": {"b": "}"}})
+    expect("no json", prompting.parse_json("OK") is None)
+    expect("a list is no answer", prompting.parse_json("[1, 2]") is None)
+    system = prompting.build_messages("Bank", "German", "English", clarification="a bench to sit on")[0]["content"]
+    expect("clarification reaches the prompt", "a bench to sit on" in system)
+    expect("no clarification leaves no gap", "{" not in prompting.build_messages("x", "German", "English")[0]["content"])
+    for messages in (prompting.clarify_messages("Bank", "German", "English"),
+                     prompting.explain_messages("Bank", "bank", "German", "English"),
+                     prompting.review_messages("Bank", "bank", "German", "English", "formal")):
+        expect("helper prompt is complete", len(messages) == 2 and "Bank" in messages[1]["content"]
+               and "{src" not in messages[0]["content"] and "{tgt" not in messages[0]["content"],
+               messages[0]["content"][:120])
+
+
+def run_fake(side, request, answers, method="translate"):
+    """Run one request against scripted model answers; return (events, prompts seen by the model)."""
+    events, prompts = [], []
+    script = list(answers)
+
+    def fake_stream(engine, messages, providers_cfg, cancel, usage):
+        prompts.append(messages)
+        yield script.pop(0)
+
+    real_emit, real_stream = sidecar_main.emit, providers.stream
+    sidecar_main.emit, providers.stream = events.append, fake_stream
+    try:
+        getattr(side, method)({"id": 1, "engine": "claude_sub", **request})
+    finally:
+        sidecar_main.emit, providers.stream = real_emit, real_stream
+    return events, prompts
+
+
+def test_modes():
+    with tempfile.TemporaryDirectory() as work:
+        config = Path(work) / "config.json"
+        config.write_text(json.dumps({"memory": {"vector": False}}), encoding="utf-8")
+        side = sidecar_main.Sidecar(APP_DIR, config)
+        text = "Ich gehe heute Nachmittag noch schnell zur Bank."
+        last = lambda events: events[-1]
+
+        # clarifying question
+        question = json.dumps({"ambiguous": True, "question": "Welche Bank?", "options": [
+            {"label": "Geldinstitut", "meaning": "the financial institution"},
+            {"label": "Sitzbank", "meaning": "a bench to sit on"}]})
+        events, _ = run_fake(side, {"text": text, "clarify": True}, [question])
+        expect("ambiguous text asks back", last(events)["event"] == "question"
+               and len(last(events)["options"]) == 2, str(last(events)))
+        expect("a question writes no history", side.history.items() == [])
+        events, prompts = run_fake(side, {"text": text, "clarify": True, "clarification": "a bench to sit on"},
+                                   ["I am quickly going to the bench this afternoon."])
+        expect("answer is used without asking again", last(events)["event"] == "done" and len(prompts) == 1
+               and "a bench to sit on" in prompts[0][0]["content"], str(last(events)))
+        events, prompts = run_fake(side, {"text": text, "clarify": True},
+                                   ['{"ambiguous": false}', "I am quickly going to the bank this afternoon."])
+        expect("clear text is translated directly", last(events)["event"] == "done" and len(prompts) == 2)
+        events, prompts = run_fake(side, {"text": text, "clarify": True},
+                                   ["no idea", "I am quickly going to the bank this afternoon."])
+        expect("unusable clarify answer does not block", last(events)["event"] == "done")
+        events, prompts = run_fake(side, {"text": text}, ["I am quickly going to the bank this afternoon."])
+        expect("no question unless switched on", len(prompts) == 1 and last(events)["event"] == "done")
+        expect("short english sentence is recognised", side._direction({}, "She saw her duck.", ["de", "en"]) == ("en", "de")
+               and side._direction({}, "Er sah ihn.", ["de", "en"]) == ("de", "en"))
+
+        # thorough mode
+        draft = "I become quickly to the bank this afternoon."
+        fixed = "I am quickly going to the bank this afternoon."
+        events, _ = run_fake(side, {"text": text, "thorough": True},
+                             [draft, json.dumps({"issues": ["'become' is a false friend"], "improved": fixed})])
+        done = last(events)
+        replaced = [e["text"] for e in events if e["event"] == "replace"]
+        expect("review corrects the draft", done.get("review") == {"changed": 1, "issues": ["'become' is a false friend"]}
+               and replaced == [fixed], str(done))
+        expect("history stores the corrected text", side.history.get(done["history_id"])["output"] == fixed)
+        events, _ = run_fake(side, {"text": text, "thorough": True}, [fixed, json.dumps({"issues": [], "improved": fixed})])
+        expect("review leaves a good draft alone", last(events)["review"] == {"changed": 0, "issues": []}
+               and not [e for e in events if e["event"] == "replace"])
+        events, _ = run_fake(side, {"text": text, "thorough": True},
+                             [fixed, json.dumps({"issues": ["x"], "improved": "Ich gehe heute Nachmittag noch schnell zur Bank."})])
+        expect("review cannot swap in an untranslated text", last(events)["review"]["changed"] == 0)
+        events, _ = run_fake(side, {"text": text, "thorough": True}, [fixed, "not json"])
+        expect("unusable review keeps the draft", last(events)["event"] == "done" and last(events)["review"]["changed"] == 0)
+
+        # history switch per request (used by the MCP server)
+        before = len(side.history.items())
+        events, _ = run_fake(side, {"text": text, "history": False}, [fixed])
+        expect("request can skip the history", "history_id" not in last(events) and len(side.history.items()) == before)
+
+        # explain mode
+        answer = json.dumps({"summary": "Passt.", "alternatives": [{"text": "I'm popping to the bank.", "note": "lockerer"}, {"note": "leer"}],
+                             "notes": [{"source": "noch schnell", "note": "beiläufig"}]})
+        events, prompts = run_fake(side, {"text": text, "translation": fixed, "source": "de", "target": "en"},
+                                   [answer], method="explain")
+        result = last(events)
+        expect("explanation is returned", result["event"] == "explanation" and result["summary"] == "Passt."
+               and len(result["alternatives"]) == 1 and result["notes"][0]["source"] == "noch schnell", str(result))
+        expect("explain prompt holds both texts", text in prompts[0][1]["content"] and fixed in prompts[0][1]["content"])
+        events, _ = run_fake(side, {"text": text, "translation": fixed}, ["blah"], method="explain")
+        expect("unusable explanation is an error", last(events).get("code") == "explain_failed")
+        events, _ = run_fake(side, {"text": "", "translation": ""}, [], method="explain")
+        expect("nothing to explain", last(events).get("code") == "nothing_to_explain")
+
+        # commands of the protocol
+        def command(request):
+            got = []
+            real = sidecar_main.emit
+            sidecar_main.emit = got.append
+            try:
+                side.handle({"id": 2, **request})
+            finally:
+                sidecar_main.emit = real
+            return got[-1]
+        listing = command({"cmd": "history"})
+        entry = listing["items"][0]
+        expect("history command lists", listing["event"] == "history" and listing["total"] == len(listing["items"]) > 0)
+        fixed_by_user = command({"cmd": "history_correct", "entry_id": entry["id"], "text": "My own wording."})
+        expect("history_correct stores", fixed_by_user["items"][0]["corrected"] == "My own wording.")
+        out = Path(work) / "export.csv"
+        exported = command({"cmd": "history_export", "path": str(out), "corrected_only": True})
+        expect("history_export writes the file", exported["event"] == "exported" and exported["count"] == 1 and out.exists(),
+               str(exported))
+        bad = command({"cmd": "history_export", "path": str(Path(work) / "missing" / "x.csv")})
+        expect("export into a missing folder is an error", bad.get("code") == "export_failed", str(bad))
+        nothing = command({"cmd": "phrases_export", "path": str(Path(work) / "p.zip")})
+        expect("phrase export without entries is an error", nothing.get("code") == "export_failed", str(nothing))
+        command({"cmd": "phrase_save", "source": "de", "target": "en", "source_text": text, "target_text": "My own wording."})
+        packed = command({"cmd": "phrases_export", "path": str(Path(work) / "p.zip")})
+        expect("phrase export writes a pack", packed.get("count") == 1 and zipfile.is_zipfile(Path(work) / "p.zip"), str(packed))
+        events, prompts = run_fake(side, {"text": text}, [])
+        expect("saved correction answers next time", last(events)["engine"] == "phrasebook" and not prompts
+               and [e["text"] for e in events if e["event"] == "delta"] == ["My own wording."], str(last(events)))
+        expect("history_clear empties", command({"cmd": "history_clear"})["items"] == [])
+
+
+def test_mcp():
+    """Protocol of the MCP server without starting a model."""
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
+        config = Path(work) / "config.json"
+        config.write_text(json.dumps({"memory": {"vector": False}}), encoding="utf-8")
+        child = subprocess.Popen(
+            [sys.executable, str(APP_DIR / "sidecar" / "mcp_server.py"), "--config", str(config)],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, encoding="utf-8")
+
+        def ask(method, params=None, msg_id=1):
+            child.stdin.write(json.dumps({"jsonrpc": "2.0", "id": msg_id, "method": method, "params": params or {}}) + "\n")
+            child.stdin.flush()
+            return json.loads(child.stdout.readline())
+        try:
+            hello = ask("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                       "clientInfo": {"name": "test", "version": "0"}})
+            expect("mcp initialize", hello["result"]["serverInfo"]["name"] == "turing-translate"
+                   and hello["result"]["protocolVersion"] == "2025-06-18", str(hello))
+            child.stdin.write('{"jsonrpc": "2.0", "method": "notifications/initialized"}\n')
+            tools = ask("tools/list", msg_id=2)["result"]["tools"]
+            expect("mcp lists its tools", [t["name"] for t in tools] == ["translate", "explain_translation", "list_languages"])
+            listed = ask("tools/call", {"name": "list_languages", "arguments": {}}, 3)["result"]
+            data = json.loads(listed["content"][0]["text"])
+            expect("mcp list_languages", not listed["isError"] and {"de", "en"} <= {l["code"] for l in data["languages"]}
+                   and "neutral" in data["styles"], str(listed))
+            hit = ask("tools/call", {"name": "translate", "arguments": {"text": "Alles in Butter", "target": "en"}}, 4)["result"]
+            expect("mcp translate answers from the phrase book", not hit["isError"]
+                   and "phrasebook" in hit["content"][0]["text"], str(hit))
+            empty = ask("tools/call", {"name": "translate", "arguments": {"text": " "}}, 5)["result"]
+            expect("mcp reports tool errors", empty["isError"] is True)
+            expect("mcp unknown method", ask("nope", msg_id=6)["error"]["code"] == -32601)
+        finally:
+            child.stdin.close()
+            try:
+                child.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                child.kill()
+                expect("mcp server exits when its input closes", False)
+
+
 if __name__ == "__main__":
     test_languages()
     test_checks()
     test_phrases()
     test_prompting()
     test_config_and_direction()
+    test_history_and_export()
+    test_json_answers()
+    test_modes()
+    test_mcp()
     if "--vector" in sys.argv:
         test_vector()
     if "--claude" in sys.argv:

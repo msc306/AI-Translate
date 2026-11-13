@@ -21,6 +21,16 @@ Ein kleiner Übersetzer für den Windows-Desktop, der am Bildschirmrand andockt.
 - **Stilwahl.** Neutral, förmlich, locker oder wörtlich.
 - **Prüfung der Ausgabe.** Leere, unübersetzte oder auffällig kurze/lange Ergebnisse werden einmal
   neu versucht und sonst mit einem Hinweis markiert.
+- **Verlauf und Export.** Übersetzungen werden lokal gespeichert, lassen sich durchsuchen und als
+  CSV, JSON oder Markdown ausgeben. Wer eine Übersetzung im Ergebnisfeld oder im Verlauf ändert,
+  speichert damit eine Korrektur – und kann sie mit einem Klick als Phrase übernehmen, die ab der
+  nächsten Übersetzung gilt. Eigene Phrasen lassen sich als Sprachpaket weitergeben.
+- **Erklären.** Auf Wunsch begründet das Modell eine Übersetzung, nennt Alternativen und weist auf
+  Redewendungen und falsche Freunde hin.
+- **Rückfrage bei Mehrdeutigkeit.** Ist ein kurzer Text mehrdeutig („Der Ton war furchtbar“), fragt
+  der Übersetzer nach, was gemeint ist (abschaltbar).
+- **Gründlich-Modus.** Das Modell prüft seinen Entwurf in einem zweiten Durchgang und verbessert ihn.
+- **Für andere Programme nutzbar.** Ein MCP-Server stellt das Übersetzen als Werkzeug bereit.
 - **Schonender Umgang mit dem Grafikspeicher.** Vor dem Laden wird geprüft, ob genug frei ist;
   danach wird das Modell wieder entladen.
 
@@ -76,9 +86,22 @@ Jeder Eintrag nennt pro Sprache eine Formulierung oder eine Liste von Varianten.
 Pakete und eigene Einträge liegen unter `%APPDATA%\TuringTranslate\`; das mitgelieferte Paket
 `packs\de-en` wird nie verändert.
 
+## Als MCP-Server nutzen
+
+Andere Programme, die das Model Context Protocol sprechen, können den Übersetzer als Werkzeug
+verwenden. Für Claude Code zum Beispiel (Pfad anpassen):
+
+```powershell
+claude mcp add turing-translate -- C:\Pfad\.venv\Scripts\python.exe C:\Pfad\sidecar\mcp_server.py
+```
+
+Werkzeuge: `translate`, `explain_translation`, `list_languages`. Es gelten die Einstellungen und
+das Phrasengedächtnis der App; in den Verlauf wird dabei nichts geschrieben.
+
 ## Tests
 
 ```powershell
+.venv\Scripts\python sidecar\tests\live_modes.py medium     # Rückfrage, Gründlich, Erklären
 .venv\Scripts\python sidecar\tests\test_units.py            # ohne Grafikkarte und Internet
 .venv\Scripts\python sidecar\tests\test_units.py --vector   # zusätzlich die Vektordatenbank
 .venv\Scripts\python sidecar\tests\smoke_sidecar.py medium  # echte Übersetzungen

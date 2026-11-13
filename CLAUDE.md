@@ -13,6 +13,7 @@ und eigene Korrekturen sinngemäß statt wörtlich übersetzt werden.
 | Sidecar | `sidecar/` (Python) | Übersetzen, Modelle, Phrasengedächtnis, Prüfungen |
 | Sprachpakete | `packs/<id>/` | `manifest.json` + `phrases.json` |
 | Eval | `sidecar/evals/` | Testfälle und Bericht zur Übersetzungsqualität |
+| MCP-Server | `sidecar/mcp_server.py` | Übersetzen als Werkzeug für andere Programme |
 
 Oberfläche und Sidecar sprechen JSON-Zeilen über stdin/stdout (`sidecar/main.py`): Befehle haben `cmd` und `id`,
 Antworten sind Ereignisse mit `event`. Neue Funktionen bekommen einen Befehl im Sidecar und einen Aufruf in
@@ -36,6 +37,7 @@ nie im Repo.
 ```powershell
 .venv\Scripts\python sidecar\tests\test_units.py            # schnell, ohne Modell
 .venv\Scripts\python sidecar\tests\smoke_sidecar.py small   # mit lokalem Modell
+.venv\Scripts\python sidecar\tests\live_modes.py medium     # Rückfrage, Gründlich, Erklären mit Modell
 .venv\Scripts\python sidecar\evals\run_eval.py --engine local --size medium
 npm run dev                                                 # App starten
 ```
@@ -73,10 +75,20 @@ Erledigtes wird abgehakt, Neues unten angehängt.
 - [x] B3 Prüfung der Ausgabe: Zielsprache, Längenverhältnis, leer; ein neuer Versuch, sonst Warnung (Sprint 1/2: Guard)
 - [x] B4 Stilwahl (neutral, förmlich, locker, wörtlich) über Prompt-Bausteine (Sprint 1: Prompt-Techniken)
 - [x] B5 Kontext über Abschnittsgrenzen: der vorige Abschnitt geht als Kontext mit (Sprint 3: State)
-- [ ] B6 Verlauf mit Export und Lernen aus Korrekturen (Sprint 3: Gedächtnis, Feedback)
-      Stand: Korrekturen lassen sich über „Als Phrase speichern“ übernehmen; Verlauf und Export fehlen noch.
+- [x] B6 Verlauf mit Export und Lernen aus Korrekturen (Sprint 3: Gedächtnis, Feedback)
+      Verlauf in `history.json` (Suche, Filter „nur korrigierte“, Export als CSV/JSON/Markdown). Wer die
+      Ausgabe ändert, speichert damit eine Korrektur; jede lässt sich als Phrase übernehmen. Eigene Phrasen
+      lassen sich als Sprachpaket exportieren.
 - [x] B7 Token- und Kostenanzeige für Cloud-Anbieter (Sprint 2/3)
-- [ ] B8 Erklär-Modus mit strukturierter Ausgabe: Alternativen und Begründung (Sprint 1: JSON-Ausgabe)
-- [ ] B9 Rückfrage bei Mehrdeutigkeit (Sprint 3: Human in the loop)
-- [ ] B10 Gründlich-Modus: übersetzen, selbst prüfen, verbessern (Sprint 3: Agent)
-- [ ] B11 Übersetzer als MCP-Server für andere Programme (Sprint 2: MCP)
+- [x] B8 Erklär-Modus mit strukturierter Ausgabe: Alternativen und Begründung (Sprint 1: JSON-Ausgabe)
+- [x] B9 Rückfrage bei Mehrdeutigkeit (Sprint 3: Human in the loop)
+      Zustandslos: das Sidecar sendet `question` und endet; die Oberfläche schickt `translate` erneut mit
+      `clarification`. Nur für kurze Texte (ein Abschnitt, höchstens 300 Zeichen). Das kleine Modell fragt selten.
+- [x] B10 Gründlich-Modus: übersetzen, selbst prüfen, verbessern (Sprint 3: Agent)
+      Die Verbesserung wird nur übernommen, wenn der Prüfer einen Fehler benennt und sie die Ausgabeprüfung besteht.
+- [x] B11 Übersetzer als MCP-Server für andere Programme (Sprint 2: MCP)
+      `sidecar/mcp_server.py` startet das Sidecar als Kindprozess; Werkzeuge `translate`, `explain_translation`,
+      `list_languages`. Schreibt nicht in den Verlauf und stellt keine Rückfragen.
+
+Antworten in JSON (Rückfrage, Erklärung, Prüfung) liest `prompting.parse_json` aus dem normalen Modelltext,
+damit alle Engines gleich funktionieren. Ist die Antwort unbrauchbar, läuft die Übersetzung ohne sie weiter.

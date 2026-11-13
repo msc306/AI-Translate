@@ -124,6 +124,21 @@ async fn pick_file(app: AppHandle, kind: String) -> Option<String> {
     Some(path.to_string_lossy().into_owned())
 }
 
+/// Ask where to save an export; the sidecar writes the file.
+#[tauri::command]
+async fn pick_save(app: AppHandle, kind: String, name: String) -> Option<String> {
+    let dialog = app.dialog().file().set_file_name(name);
+    let dialog = match kind.as_str() {
+        "csv" => dialog.add_filter("CSV-Tabelle", &["csv"]),
+        "json" => dialog.add_filter("JSON", &["json"]),
+        "md" => dialog.add_filter("Markdown", &["md"]),
+        "pack" => dialog.add_filter("Sprachpaket", &["zip"]),
+        _ => dialog,
+    };
+    let path = dialog.set_title("Speichern unter").blocking_save_file()?.into_path().ok()?;
+    Some(path.to_string_lossy().into_owned())
+}
+
 #[tauri::command]
 fn sidecar_send(state: State<AppState>, msg: Value) -> Result<(), String> {
     state.sidecar.send(&msg)
@@ -260,7 +275,8 @@ fn main() {
             set_autostart,
             read_clipboard,
             write_clipboard,
-            pick_file
+            pick_file,
+            pick_save
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

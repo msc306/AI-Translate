@@ -31,9 +31,11 @@ CATALOG = {
 
 _STOPWORDS = {
     "de": "der die das und ist nicht ich du wir sie ein eine mit auf für von zu den dem im auch es sich wie noch "
-          "nur aber oder wenn dass war hat haben wird sind bei aus nach mir dir was kein schon mal",
+          "nur aber oder wenn dass war hat haben wird sind bei aus nach mir dir was kein schon mal er ihr ihn uns "
+          "euch mich dich wer wann wo warum hatte wurde am zum zur",
     "en": "the and is not you we they a an with on for of to in it that this was are be have has but or if my "
-          "your what do does at by from as will would can there just so",
+          "your what do does at by from as will would can there just so i he she his her him its our their them "
+          "who when where which how were been had did",
     "fr": "le la les et est pas je tu nous vous un une avec sur pour de du des en que qui dans ce il elle ne se "
           "au mais ou si mon ton sont être avoir plus tout très",
     "es": "el la los las y es no yo tú un una con por para de del en que se lo su pero o si mi muy está son como "

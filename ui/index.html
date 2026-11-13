@@ -13,6 +13,7 @@
   <span class="title">Übersetzer</span>
   <span class="spacer"></span>
   <button id="btn-dock" title="Andocken / als Fenster lösen">⇱</button>
+  <button id="btn-history" title="Verlauf">🕘</button>
   <button id="btn-settings" title="Einstellungen">⚙</button>
   <button id="btn-hide" title="Verbergen (bleibt im Infobereich)">✕</button>
 </header>
@@ -44,7 +45,17 @@
     <label class="check"><input type="checkbox" id="auto"> automatisch</label>
   </div>
 
+  <div class="row">
+    <label class="check" title="Das Modell prüft seine Übersetzung in einem zweiten Durchgang und korrigiert Fehler. Dauert etwa doppelt so lang."><input type="checkbox" id="thorough"> gründlich</label>
+    <label class="check" title="Bei kurzen, mehrdeutigen Texten (z. B. „Bank“) erst fragen, was gemeint ist."><input type="checkbox" id="clarify"> bei Mehrdeutigkeit nachfragen</label>
+  </div>
+
   <div id="status" class="status"></div>
+
+  <div id="question" class="card" hidden>
+    <div id="question-text"></div>
+    <div id="question-options" class="row"></div>
+  </div>
 
   <div id="output" class="output" tabindex="0" contenteditable="plaintext-only" spellcheck="false"
        title="Die Übersetzung lässt sich hier korrigieren und dann ins Phrasenbuch übernehmen"></div>
@@ -52,6 +63,7 @@
   <div class="row">
     <button id="btn-copy">Kopieren</button>
     <button id="btn-save-phrase" title="Eingabe und (ggf. korrigierte) Ausgabe als festen Eintrag ins Phrasenbuch übernehmen">Ins Phrasenbuch</button>
+    <button id="btn-explain" title="Erklärt die Übersetzung und zeigt Alternativen">Erklären</button>
   </div>
   <div id="meta" class="meta"></div>
   <div id="warnings" class="warnings" hidden></div>
@@ -59,6 +71,29 @@
     <summary></summary>
     <div id="used-list"></div>
   </details>
+  <div id="explain" class="card" hidden></div>
+</main>
+
+<main id="view-history" hidden>
+  <div class="row">
+    <button id="btn-history-back">← Zurück</button>
+    <span class="spacer"></span>
+    <button id="hist-clear" title="Den ganzen Verlauf löschen">Alles löschen</button>
+  </div>
+  <div class="row nowrap">
+    <input type="text" id="hist-filter" placeholder="Im Verlauf suchen …">
+    <label class="check"><input type="checkbox" id="hist-corrected"> nur korrigierte</label>
+  </div>
+  <div class="row nowrap">
+    <select id="hist-format" title="Dateiformat für den Export">
+      <option value="csv">CSV (Excel)</option>
+      <option value="json">JSON</option>
+      <option value="md">Markdown</option>
+    </select>
+    <button id="hist-export" title="Speichert die angezeigte Auswahl (alle oder nur korrigierte) als Datei">Exportieren …</button>
+  </div>
+  <div id="hist-note" class="meta">Die Übersetzung eines Eintrags lässt sich direkt hier korrigieren und mit ★ als Phrase speichern.</div>
+  <div id="hist-list"></div>
 </main>
 
 <main id="view-settings" hidden>
@@ -140,6 +175,8 @@
   <label class="check"><input type="checkbox" id="set-vector"> Ähnliche Redewendungen finden (Vektordatenbank ChromaDB)</label>
   <div id="set-memory" class="meta"></div>
   <label class="check"><input type="checkbox" id="set-checks"> Übersetzung prüfen und bei Auffälligkeiten einmal neu versuchen</label>
+  <label class="check"><input type="checkbox" id="set-history"> Verlauf der Übersetzungen speichern (nur auf diesem PC)</label>
+  <div class="row"><button id="ph-export" title="Speichert deine eigenen Einträge als Sprachpaket, das andere installieren können">Eigene Phrasen exportieren …</button></div>
   <div class="row nowrap">
     <select id="ph-source" title="Sprache links"></select>
     <select id="ph-target" title="Sprache rechts"></select>

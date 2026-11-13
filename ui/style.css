@@ -139,3 +139,22 @@ h3 { font-size: 12.5px; margin: 6px 0 0; color: var(--muted); font-weight: 600; 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 3px 10px; }
 #set-model-rows, #set-packs { display: flex; flex-direction: column; gap: 6px; }
 #set-models { white-space: pre-line; }
+
+/* ---------- history, question, explanation ---------- */
+#hist-list { display: flex; flex-direction: column; gap: 6px; }
+.hist {
+  display: flex; flex-direction: column; gap: 3px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px;
+  font-size: 13px; overflow-wrap: anywhere;
+}
+.hist .head { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 11.5px; }
+.hist .head button { border: none; background: transparent; padding: 0 4px; }
+.hist .src { color: var(--muted); white-space: pre-wrap; }
+.hist .out { white-space: pre-wrap; border-radius: 4px; padding: 1px 3px; margin: 0 -3px; }
+.hist .out:focus { background: var(--bg); }
+#question-text { font-weight: 600; }
+#explain { font-size: 13px; overflow-wrap: anywhere; }
+#explain .alt { display: flex; gap: 6px; align-items: baseline; }
+#explain .alt > div { flex: 1; min-width: 0; }
+#explain .note { color: var(--muted); font-size: 12.5px; }
+#explain h3 { font-size: 12px; margin: 4px 0 0; color: var(--muted); font-weight: 600; }
