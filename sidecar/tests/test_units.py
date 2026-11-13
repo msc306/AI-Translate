@@ -432,7 +432,91 @@ def test_mcp():
                 expect("mcp server exits when its input closes", False)
 
 
+def test_downloads():
+    """Downloader against a local HTTP server: checksum, resume, runtime unpacking, bad checksum."""
+    import hashlib
+    import http.server
+    import io
+    import downloads
+
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
+        work = Path(work)
+        exe_zip = io.BytesIO()
+        with zipfile.ZipFile(exe_zip, "w") as bundle:
+            bundle.writestr("build/bin/llama-server.exe", b"exe")
+            bundle.writestr("build/bin/ggml.dll", b"dll")
+            bundle.writestr("../evil.txt", b"x")
+        lib_zip = io.BytesIO()
+        with zipfile.ZipFile(lib_zip, "w") as bundle:
+            bundle.writestr("cudart64_12.dll", b"cuda")
+        model = bytes(range(256)) * 9000
+        files = {"/rt.zip": exe_zip.getvalue(), "/lib.zip": lib_zip.getvalue(), "/m.gguf": model}
+        requests = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = files.get(self.path)
+                if body is None:
+                    self.send_error(404)
+                    return
+                start = 0
+                if self.headers.get("Range"):
+                    start = int(self.headers["Range"].split("=")[1].rstrip("-"))
+                    self.send_response(206)
+                    self.send_header("Content-Range", f"bytes {start}-{len(body) - 1}/{len(body)}")
+                    requests.append(("range", self.path, start))
+                else:
+                    self.send_response(200)
+                self.send_header("Content-Length", str(len(body) - start))
+                self.end_headers()
+                self.wfile.write(body[start:])
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        base = f"http://127.0.0.1:{server.server_port}"
+
+        def spec(name, path, data, sha=None):
+            return {"name": name, "url": base + path, "sha256": sha or hashlib.sha256(data).hexdigest(), "size_mb": 1}
+
+        catalog = {
+            "runtime": {"kind": "runtime", "label": "rt", "size_mb": 1,
+                        "files": [spec("rt.zip", "/rt.zip", files["/rt.zip"]), spec("lib.zip", "/lib.zip", files["/lib.zip"])]},
+            "model_small": {"kind": "model", "label": "m", "size_mb": 1, "files": [spec("m.gguf", "/m.gguf", model)]},
+            "broken": {"kind": "model", "label": "b", "size_mb": 1, "files": [spec("b.gguf", "/m.gguf", model, "0" * 64)]},
+        }
+        events = []
+        loader = downloads.Downloader(work / "data", events.append, catalog, allow_http=True)
+        try:
+            (work / "data" / "downloads").mkdir(parents=True)
+            (work / "data" / "downloads" / "m.gguf.part").write_bytes(model[:1000])  # interrupted earlier
+            for item in ("runtime", "model_small", "broken"):
+                loader.start(item, item)
+            loader.wait(30)
+        finally:
+            server.shutdown()
+        final = {e["item"]: e for e in events if e["state"] in ("done", "error", "cancelled")}
+        runtime = work / "data" / "runtime"
+        expect("download unpacks the runtime flat", final["runtime"]["state"] == "done"
+               and (runtime / "llama-server.exe").is_file() and (runtime / "ggml.dll").is_file()
+               and (runtime / "cudart64_12.dll").is_file(), str(final.get("runtime")))
+        expect("download skips unsafe archive paths", not (work / "data" / "evil.txt").exists()
+               and not (runtime / "evil.txt").exists())
+        target = work / "data" / "models" / "m.gguf"
+        expect("download resumes and verifies the model", final["model_small"]["state"] == "done"
+               and target.is_file() and target.read_bytes() == model, str(final.get("model_small")))
+        expect("download resumes with a range request", ("range", "/m.gguf", 1000) in requests, str(requests))
+        expect("download rejects a wrong checksum", final["broken"]["state"] == "error"
+               and "Prüfsumme" in final["broken"]["message"] and not (work / "data" / "models" / "b.gguf").exists())
+        state = {s["item"]: s for s in loader.state()}
+        expect("download state reports installed items", state["runtime"]["installed"] and state["model_small"]["installed"]
+               and not state["broken"]["installed"])
+
+
 if __name__ == "__main__":
+    test_downloads()
     test_languages()
     test_checks()
     test_phrases()

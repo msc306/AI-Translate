@@ -21,6 +21,16 @@ const state = {
   history: [],
   quietHistoryId: null,
   sentCorrection: "",
+  downloads: {},
+};
+
+const DOWNLOAD_STATES = {
+  running: "lädt",
+  verifying: "prüft die Datei",
+  extracting: "entpackt",
+  done: "fertig",
+  cancelled: "abgebrochen",
+  error: "Fehler",
 };
 
 const STAGES = {
@@ -318,6 +328,9 @@ function onSidecar(e) {
     case "explanation":
       onExplanation(e);
       break;
+    case "download":
+      onDownload(e);
+      break;
     case "error":
       if (e.id === state.explainId) {
         state.explainId = null;
@@ -396,14 +409,19 @@ function applyStatusInfo(info) {
     const label = option.textContent.replace(/ – .*/, "");
     option.textContent = option.disabled ? `${label} – nicht installiert` : label;
   }
-  if (first) {
-    const wanted = localStorage.getItem("size") || config.engine.model;
+  const current = $("size").selectedOptions[0];
+  if (first || !current || current.disabled) {
+    const wanted = first ? (localStorage.getItem("size") || config.engine.model) : $("size").value;
     const option = [...$("size").options].find((o) => o.value === wanted && !o.disabled)
       || [...$("size").options].find((o) => !o.disabled);
     if (option) $("size").value = option.value;
   }
   $("size").hidden = $("engine").value !== "local";
 
+  for (const item of info.downloads || []) {
+    if (item.running && !state.downloads[item.item]) state.downloads[item.item] = { state: "running" };
+  }
+  renderSetup(info);
   renderSettings(info);
   if (first) requestPhrases();
 }
@@ -441,8 +459,93 @@ function renderModelRows(info) {
 
   const lines = [];
   if (info.vram) lines.push(`Grafikspeicher: ${info.vram.free} von ${info.vram.total} MB frei`);
-  if (!info.runtime) lines.push("llama-server wurde nicht gefunden.");
+  else lines.push("Keine NVIDIA-Grafikkarte gefunden. Lokale Modelle brauchen eine; ohne sie bleiben die Anbieter im Internet.");
+  if (!info.runtime) lines.push("llama-server wurde nicht gefunden. Die Laufzeit lässt sich unten herunterladen.");
   $("set-models").textContent = lines.join("\n");
+  renderDownloads(info);
+}
+
+// ---------- First start and downloads ----------
+
+function localReady(info) {
+  return !!info.runtime && Object.keys(SIZE_LABELS).some((size) => info.presets?.[size] && !info.presets[size].missing);
+}
+
+function downloadText(item) {
+  const run = state.downloads[item.item];
+  if (run && run.state !== "done") {
+    const amount = run.total_mb ? ` · ${run.done_mb || 0} von ${run.total_mb} MB` : "";
+    return `${DOWNLOAD_STATES[run.state] || run.state}${amount}${run.message ? ` · ${run.message}` : ""}`;
+  }
+  return item.installed ? "installiert" : `${(item.size_mb / 1024).toFixed(1)} GB`;
+}
+
+function isRunning(item) {
+  const run = state.downloads[item];
+  return !!run && ["running", "verifying", "extracting"].includes(run.state);
+}
+
+function startDownload(item) {
+  state.downloads[item] = { state: "running" };
+  send({ cmd: "download", item });
+  if (state.info) { renderDownloads(state.info); renderSetup(state.info); }
+}
+
+function renderDownloads(info) {
+  const rows = (info.downloads || []).map((item) => {
+    const button = el("button");
+    if (isRunning(item.item)) {
+      button.textContent = "Abbrechen";
+      button.onclick = () => send({ cmd: "download_cancel", item: item.item });
+    } else {
+      button.textContent = item.installed ? "Installiert" : "Herunterladen";
+      button.disabled = item.installed;
+      button.onclick = () => startDownload(item.item);
+    }
+    return el("div", { className: "row nowrap" },
+      el("span", { className: "grow" }, item.label, el("div", { className: "meta", textContent: downloadText(item) })),
+      button);
+  });
+  const hint = el("p", { className: "meta",
+    textContent: `Downloads landen in ${info.data_dir}. Jede Datei wird anhand ihrer Prüfsumme kontrolliert; ein abgebrochener Download setzt beim nächsten Mal fort.` });
+  $("set-downloads").replaceChildren(...rows, ...(rows.length ? [hint] : []));
+}
+
+function renderSetup(info) {
+  const online = info.engines.some((e) => e.id !== "local" && e.enabled && e.ready);
+  const anyRunning = (info.downloads || []).some((item) => isRunning(item.item));
+  const show = anyRunning || (!localReady(info) && !online);
+  $("setup").hidden = !show;
+  if (!show) return;
+  const gpu = !!info.vram;
+  $("setup-text").textContent = gpu
+    ? (localReady(info)
+        ? "Lokales Übersetzen ist eingerichtet."
+        : "Für lokales Übersetzen fehlt noch " + [
+            info.runtime ? null : "die llama.cpp-Laufzeit",
+            (info.models || []).length ? null : "ein Modell",
+          ].filter(Boolean).join(" und ") + ".")
+    : "Auf diesem PC wurde keine NVIDIA-Grafikkarte gefunden. Lokale Modelle laufen deshalb nicht; übersetzen lässt sich über einen Anbieter im Internet.";
+  $("setup-local").hidden = !gpu;
+  const missing = (info.downloads || []).filter((item) => !item.installed);
+  const button = $("setup-download");
+  button.disabled = anyRunning || !missing.length;
+  button.textContent = anyRunning ? "Wird heruntergeladen …" : "Laufzeit und Modell herunterladen";
+  $("setup-progress").textContent = (info.downloads || [])
+    .filter((item) => state.downloads[item.item] || item.installed)
+    .map((item) => `${item.label}: ${downloadText(item)}`).join("\n");
+}
+
+function onDownload(e) {
+  const finished = ["done", "cancelled", "error"].includes(e.state);
+  state.downloads[e.item] = e;
+  if (finished) {
+    if (e.state === "done") delete state.downloads[e.item];
+    send({ cmd: "status" });
+  } else if (state.info) {
+    renderDownloads(state.info);
+    renderSetup(state.info);
+  }
 }
 
 function renderProviders(info) {
@@ -796,6 +899,11 @@ async function init() {
   $("btn-dock").onclick = async () => applyLayout(await invoke("toggle_dock"));
   $("btn-hide").onclick = () => invoke("hide_window");
   $("btn-settings").onclick = openSettings;
+  $("setup-settings").onclick = openSettings;
+  $("setup-download").onclick = () => {
+    // runtime first: it is small and makes the model usable as soon as that arrives
+    for (const item of (state.info?.downloads || []).filter((d) => !d.installed)) startDownload(item.item);
+  };
   $("btn-back").onclick = $("btn-history-back").onclick = () => showView("main");
   $("btn-explain").onclick = explain;
   $("output").addEventListener("blur", noteCorrection);

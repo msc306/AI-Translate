@@ -137,7 +137,12 @@ h3 { font-size: 12.5px; margin: 6px 0 0; color: var(--muted); font-weight: 600; 
 .card .check { color: var(--text); font-weight: 600; }
 .card input, .card select { background: var(--bg); }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 3px 10px; }
-#set-model-rows, #set-packs { display: flex; flex-direction: column; gap: 6px; }
+#set-model-rows, #set-packs, #set-downloads { display: flex; flex-direction: column; gap: 6px; }
+#set-downloads { margin-top: 6px; }
+.grow { flex: 1; min-width: 0; }
+#setup h2 { margin: 0; }
+#setup p { margin: 0; }
+#setup-progress { white-space: pre-line; }
 #set-models { white-space: pre-line; }
 
 /* ---------- history, question, explanation ---------- */

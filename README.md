@@ -9,8 +9,9 @@ The interface and the rest of this document are German.
 andockt wie eine zweite Taskleiste. Er übersetzt mit einem Modell auf der eigenen Grafikkarte oder
 über einen Anbieter im Internet.
 
-**Inhalt:** [Was er kann](#was-er-kann) · [Voraussetzungen](#voraussetzungen) ·
-[Einrichten und starten](#einrichten-und-starten) · [Bedienung](#bedienung) ·
+**Inhalt:** [Was er kann](#was-er-kann) · [Installieren](#installieren) ·
+[Voraussetzungen](#voraussetzungen) · [Aus dem Quellcode starten](#aus-dem-quellcode-starten) ·
+[Installer bauen](#installer-bauen) · [Bedienung](#bedienung) ·
 [Anbieter](#anbieter) · [Sprachpakete](#sprachpakete) ·
 [Als MCP-Server nutzen](#als-mcp-server-nutzen) · [Tests](#tests) · [Aufbau](#aufbau)
 
@@ -42,18 +43,38 @@ andockt wie eine zweite Taskleiste. Er übersetzt mit einem Modell auf der eigen
 - **Schonender Umgang mit dem Grafikspeicher.** Vor dem Laden wird geprüft, ob genug frei ist;
   danach wird das Modell wieder entladen.
 
+## Installieren
+
+1. Unter [Releases](https://github.com/msc306/AI-Translate/releases) die Datei
+   `Turing.Translate_<Version>_x64-setup.exe` herunterladen und starten. Sie installiert für den
+   angemeldeten Benutzer, Administratorrechte sind nicht nötig. Python ist enthalten.
+2. Beim ersten Start zeigt das Fenster **Erste Schritte**, solange weder ein lokales Modell noch ein
+   Anbieter eingerichtet ist:
+   - **Laufzeit und Modell herunterladen** lädt die llama.cpp-Laufzeit (CUDA 12.4, ca. 680 MB) und
+     das kleine Modell Gemma 4 E2B (Apache-2.0, ca. 3,3 GB) nach `%LOCALAPPDATA%\TuringTranslate`.
+     Jede Datei wird anhand ihrer Prüfsumme kontrolliert; ein abgebrochener Download setzt beim
+     nächsten Mal fort. Danach übersetzt das Programm ohne Internet.
+   - Ohne NVIDIA-Grafikkarte, oder wer nichts herunterladen möchte, wählt in den Einstellungen einen
+     Anbieter im Internet.
+3. Größere Modelle (mittel, groß) lassen sich in den Einstellungen als GGUF-Datei auswählen.
+
+Der Installer ist nicht signiert; Windows SmartScreen fragt deshalb beim ersten Start nach
+(„Weitere Informationen“ → „Trotzdem ausführen“). Die Prüfsumme jeder Release-Datei steht in den
+Release-Notizen. Das Phrasengedächtnis sucht in der installierten Fassung nach Wortlaut; die
+Ähnlichkeitssuche mit ChromaDB gibt es in der Fassung aus dem Quellcode.
+
 ## Voraussetzungen
 
-- Windows 10/11
-- [Node.js](https://nodejs.org), [Rust](https://rustup.rs) und [uv](https://docs.astral.sh/uv/)
-- Für lokale Modelle: eine NVIDIA-Grafikkarte und `llama-server.exe` von
-  [llama.cpp](https://github.com/ggml-org/llama.cpp). Ist [LM Studio](https://lmstudio.ai)
-  installiert, werden dessen llama.cpp und dessen Modelle automatisch gefunden. Sonst
-  `llama-server.exe` nach `runtime\` legen oder den Pfad in der Konfiguration angeben.
+- Windows 10/11 (64 Bit)
+- Für lokale Modelle: eine NVIDIA-Grafikkarte mit aktuellem Treiber (für das kleine Modell reichen
+  etwa 5 GB Grafikspeicher). Ist [LM Studio](https://lmstudio.ai) installiert, werden dessen
+  llama.cpp-Laufzeit und Modelle automatisch gefunden.
 - Für die Anbieter im Internet je nach Wahl: ein API-Schlüssel,
   [Claude Code](https://claude.com/claude-code) (angemeldet mit dem Abo) oder die Codex-CLI.
+- Nur für den Start aus dem Quellcode: [Node.js](https://nodejs.org), [Rust](https://rustup.rs)
+  und [uv](https://docs.astral.sh/uv/).
 
-## Einrichten und starten
+## Aus dem Quellcode starten
 
 ```powershell
 git clone https://github.com/msc306/AI-Translate.git
@@ -69,9 +90,19 @@ oder werden in den Einstellungen über „Durchsuchen“ gewählt.
 Beim ersten Start mit Phrasengedächtnis wird einmalig ein kleines Sprachmodell für die Suche
 geladen (ca. 120 MB). Danach arbeitet die Suche ohne Internet.
 
-`npm run build` erzeugt `src-tauri\target\release\turing-translate.exe`. Das Programm erwartet die
-Ordner `sidecar\`, `packs\` und `.venv\` weiterhin im Projektordner; ein Installationspaket gibt es
-noch nicht.
+`npm run build` erzeugt `src-tauri\target\release\turing-translate.exe`. Diese Fassung erwartet die
+Ordner `sidecar\`, `packs\` und `.venv\` weiterhin im Projektordner.
+
+## Installer bauen
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-installer.ps1
+```
+
+Das Skript stellt in `build\bundle` den Sidecar (ohne Tests), die Sprachpakete und das offizielle
+Embeddable-Python von python.org zusammen, prüft, dass der Sidecar damit startet, und baut mit
+`src-tauri\tauri.bundle.conf.json` einen NSIS-Installer nach
+`src-tauri\target\release\bundle\nsis\`.
 
 ## Bedienung
 
@@ -148,6 +179,7 @@ Formatierung, falsche Freunde, eingeschleuste Befehle, Stil) und optional ein zw
 | `ui\` | Oberfläche (HTML, CSS, JavaScript ohne Build-Schritt) |
 | `sidecar\` | Übersetzungsdienst (Python; der Kern nutzt nur die Standardbibliothek) |
 | `packs\` | mitgeliefertes Sprachpaket |
+| `scripts\` | Bau des Installers |
 
 Die Oberfläche spricht mit dem Dienst über JSON-Zeilen; das Protokoll steht am Anfang von
 `sidecar\main.py`. Hinweise für die Arbeit am Code stehen in `CLAUDE.md`, die Änderungen je

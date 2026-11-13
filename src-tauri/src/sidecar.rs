@@ -19,6 +19,7 @@ pub struct Sidecar {
 }
 
 /// Folder that holds sidecar\main.py and packs\ (the project or installation folder).
+/// The installer puts both next to the executable, a source checkout has them a few levels up.
 pub fn app_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("TURING_TRANSLATE_DIR") {
         return PathBuf::from(dir);
@@ -65,7 +66,9 @@ impl Sidecar {
     pub fn start(&self, app: &AppHandle) {
         let dir = app_dir();
         let python = find_python(&dir);
+        // `-X utf8` as well as PYTHONUTF8: the bundled embeddable Python runs isolated and ignores the variable.
         let spawned = Command::new(&python)
+            .args(["-X", "utf8"])
             .arg(dir.join("sidecar").join("main.py"))
             .arg("--app-dir")
             .arg(&dir)
@@ -104,7 +107,7 @@ impl Sidecar {
             return Err(err);
         }
         let mut guard = self.stdin.lock().unwrap();
-        let stdin = guard.as_mut().ok_or("Sidecar laeuft nicht.")?;
+        let stdin = guard.as_mut().ok_or("Sidecar läuft nicht.")?;
         let mut line = message.to_string();
         line.push('\n');
         stdin.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
@@ -114,7 +117,7 @@ impl Sidecar {
     /// Stops the sidecar, which unloads the model and ends llama-server on its way out.
     pub fn stop(&self) {
         let _ = self.send(&json!({"cmd": "shutdown"}));
-        *self.stdin.lock().unwrap() = None; // EOF als zweite Sicherung
+        *self.stdin.lock().unwrap() = None; // EOF as a second signal
         if let Some(mut child) = self.child.lock().unwrap().take() {
             for _ in 0..80 {
                 if matches!(child.try_wait(), Ok(Some(_))) {

@@ -2,6 +2,21 @@
 
 Alle nennenswerten Änderungen an diesem Projekt.
 
+## 0.3.0 – 2026-11-13
+
+### Neu
+
+- Installer für Windows (per Benutzer, ohne Administratorrechte) mit eingebautem Python; wer das
+  Programm nur nutzen will, braucht weder Node.js noch Rust.
+- „Erste Schritte“ im Fenster, solange weder ein lokales Modell noch ein Anbieter eingerichtet ist.
+- Download der llama.cpp-Laufzeit und eines kleinen Modells aus dem Programm heraus, mit
+  Prüfsumme, Fortsetzen nach Abbruch und Fortschrittsanzeige.
+
+### Geändert
+
+- Laufzeit und Modelle werden zusätzlich in `%LOCALAPPDATA%\TuringTranslate` gesucht.
+- Ist die gewählte Modellgröße nicht vorhanden, wird eine vorhandene gewählt.
+
 ## 0.2.0 – 2026-11-13
 
 ### Neu

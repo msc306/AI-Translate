@@ -19,7 +19,18 @@ import gpu
 import winjob
 
 NO_WINDOW = 0x08000000
-LMSTUDIO = Path.home() / ".lmstudio"
+
+
+def lmstudio_dir() -> Path:
+    return Path(os.environ.get("TURING_TRANSLATE_LMSTUDIO") or Path.home() / ".lmstudio")
+
+
+def data_dir() -> Path:
+    """Folder for the downloaded runtime and models: large files, kept out of the roaming profile."""
+    override = os.environ.get("TURING_TRANSLATE_DATA")
+    if override:
+        return Path(override)
+    return Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "TuringTranslate"
 
 
 class EngineError(Exception):
@@ -41,11 +52,12 @@ def find_llama_server(configured: str, app_dir: Path) -> tuple[Path, list[Path]]
             return exe, []
         raise EngineError("runtime_missing", f"llama-server nicht gefunden: {configured}")
 
-    own = app_dir / "runtime" / "llama-server.exe"
-    if own.is_file():
-        return own, []
+    for folder in (app_dir / "runtime", data_dir() / "runtime"):
+        own = folder / "llama-server.exe"
+        if own.is_file():
+            return own, []
 
-    backends = LMSTUDIO / "extensions" / "backends"
+    backends = lmstudio_dir() / "extensions" / "backends"
     candidates = sorted(backends.glob("llama.cpp-win-x86_64-nvidia-cuda12-avx2-*"), key=_version_key, reverse=True)
     for folder in candidates:
         exe = folder / "llama-server.exe"
@@ -63,14 +75,14 @@ def find_llama_server(configured: str, app_dir: Path) -> tuple[Path, list[Path]]
         return exe, dll_dirs
     raise EngineError(
         "runtime_missing",
-        "Keine llama.cpp-Laufzeit gefunden (weder runtime\\llama-server.exe noch LM Studio).",
+        "Keine llama.cpp-Laufzeit gefunden. Sie lässt sich in den Einstellungen herunterladen.",
     )
 
 
 def list_models(app_dir: Path) -> list[dict]:
-    """All GGUF language models from LM Studio and the app's models folder."""
+    """All GGUF language models from LM Studio, the app's models folder and the download folder."""
     found = []
-    for root in (LMSTUDIO / "models", app_dir / "models"):
+    for root in (lmstudio_dir() / "models", app_dir / "models", data_dir() / "models"):
         if not root.is_dir():
             continue
         for file in root.rglob("*.gguf"):

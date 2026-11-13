@@ -52,6 +52,18 @@
 
   <div id="status" class="status"></div>
 
+  <div id="setup" class="card" hidden>
+    <h2>Erste Schritte</h2>
+    <p id="setup-text"></p>
+    <div id="setup-local">
+      <p class="meta">Lokal übersetzen: Der Text verlässt den PC nicht. Dafür werden die llama.cpp-Laufzeit und ein kleines Modell geladen (zusammen etwa 3,9 GB, einmalig). Wer LM Studio mit einem Modell installiert hat, braucht nichts zu laden.</p>
+      <div class="row"><button id="setup-download" class="primary">Laufzeit und Modell herunterladen</button></div>
+      <div id="setup-progress" class="meta"></div>
+    </div>
+    <p class="meta">Alternativ: In den Einstellungen unter „Anbieter im Internet“ ein Claude- oder ChatGPT-Abo oder einen API-Schlüssel einschalten.</p>
+    <div class="row"><button id="setup-settings">Einstellungen öffnen</button></div>
+  </div>
+
   <div id="question" class="card" hidden>
     <div id="question-text"></div>
     <div id="question-options" class="row"></div>
@@ -114,6 +126,7 @@
   <p class="meta">Für jede Größe lässt sich ein Modell wählen: aus den gefundenen Modellen auf diesem PC oder über „Durchsuchen“ eine beliebige GGUF-Datei.</p>
   <div id="set-model-rows"></div>
   <div id="set-models" class="meta"></div>
+  <div id="set-downloads"></div>
   <label>VRAM-Reserve für andere Programme (MB) <input type="number" id="set-reserve" min="0" step="256"></label>
   <label>Modell nach Übersetzung geladen lassen (Sekunden, 0 = sofort entladen)
     <input type="number" id="set-keep" min="0" step="5"></label>

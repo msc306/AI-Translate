@@ -26,3 +26,6 @@ config.json
 # Icons for platforms this Windows app does not target
 src-tauri/icons/android/
 src-tauri/icons/ios/
+
+# Installer staging
+build/

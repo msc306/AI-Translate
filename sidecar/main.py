@@ -17,6 +17,8 @@ Commands and the events that answer them:
   history_export {path, format?: csv|json|md, corrected_only?} -> exported {path, count}
   pack_install {path | url} -> pack_installed        pack_remove {pack} -> pack_removed
   pack_index -> pack_index        provider_models -> provider_models
+  download {item: runtime|model_small} | download_cancel {item?}
+      -> download {item, state: running|verifying|extracting|done|cancelled|error, done_mb?, total_mb?, message?}
 Failures are reported as error {code, message}.
 """
 import argparse
@@ -30,6 +32,7 @@ import urllib.request
 from pathlib import Path
 
 import checks
+import downloads
 import history
 import gpu
 import languages
@@ -120,6 +123,7 @@ class Sidecar:
         self.server: local_engine.LlamaServer | None = None
         self.server_lock = threading.Lock()
         self.unload_timer: threading.Timer | None = None
+        self.downloader = downloads.Downloader(local_engine.data_dir(), emit)
         self.sync_index()
 
     def _load_packs(self):
@@ -224,6 +228,8 @@ class Sidecar:
             "styles": [{"id": key, "label": value[0]} for key, value in prompting.STYLES.items()],
             "packs": [pack.info() for pack in self.book.packs.values()],
             "memory": self.index.info() if full["memory"].get("vector") else {"state": "off", "count": 0, "error": ""},
+            "downloads": self.downloader.state(),
+            "data_dir": str(local_engine.data_dir()),
             "config": self.public_config(),
         }
 
@@ -693,9 +699,17 @@ class Sidecar:
                 emit({"id": req_id, "event": "provider_models", "models": providers.openai_models(cfg)})
             except EngineError as err:
                 emit({"id": req_id, "event": "error", "code": err.code, "message": str(err)})
+        elif cmd == "download":
+            try:
+                self.downloader.start(str(req.get("item") or ""), req_id)
+            except downloads.DownloadError as err:
+                emit({"id": req_id, "event": "error", "code": "download_failed", "message": str(err)})
+        elif cmd == "download_cancel":
+            self.downloader.cancel(req.get("item") or None)
         elif cmd == "shutdown":
             self.stop_worker()
             self.unload()
+            self.downloader.cancel()
             return False
         else:
             emit({"id": req_id, "event": "error", "code": "unknown_command", "message": f"Unbekannter Befehl: {cmd}"})
@@ -776,8 +790,10 @@ def main() -> None:
             if not sidecar.handle(req):
                 break
     finally:
+        sidecar.downloader.cancel()
         sidecar.stop_worker()
         sidecar.unload()
+        sidecar.downloader.wait(5)
 
 
 if __name__ == "__main__":
