@@ -1,11 +1,12 @@
-"""Vergleicht Modelle an Redewendungen: Ladezeit, Tempo, VRAM-Freigabe, Qualitaet.
+"""Compare local models on idioms: load time, speed, release of graphics memory, quality.
 
-Aufruf:  python sidecar/tests/bench_models.py [namensteil ...]
-Die Saetze stehen bewusst NICHT im Phrasenbuch, damit das Modell selbst gefordert ist.
+Usage:  python sidecar/tests/bench_models.py [part of a model name ...]
+The sentences are deliberately NOT in the phrase book, so the model has to cope on its own.
 """
 from __future__ import annotations
 
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -34,15 +35,15 @@ def bench(model: dict) -> None:
     path = Path(model["path"])
     exe, dll_dirs = local_engine.find_llama_server("auto", APP_DIR)
     before = gpu.vram_mb()
-    print(f"\n=== {model['name']}  ({model['size_mb']} MB, geschaetzter Bedarf {local_engine.required_vram_mb(path, 4096)} MB) ===")
+    print(f"\n=== {model['name']}  ({model['size_mb']} MB, estimated need {local_engine.required_vram_mb(path, 4096)} MB) ===")
     cancel = threading.Event()
     t0 = time.monotonic()
-    server = local_engine.LlamaServer(exe, dll_dirs, path, 4096, APP_DIR / "sidecar" / "tests" / "bench.log")
+    server = local_engine.LlamaServer(exe, dll_dirs, path, 4096, Path(tempfile.gettempdir()) / "turing-translate-bench.log")
     try:
         server.wait_ready(cancel)
         load = time.monotonic() - t0
         loaded = gpu.vram_mb()
-        print(f"Laden: {load:.1f} s | VRAM belegt durch Modell: {before['free'] - loaded['free']} MB")
+        print(f"load: {load:.1f} s | graphics memory used by the model: {before['free'] - loaded['free']} MB")
         total_chars, total_time = 0, 0.0
         for src, tgt, sentence in SENTENCES:
             t1 = time.monotonic()
@@ -51,12 +52,12 @@ def bench(model: dict) -> None:
             total_chars += len(out)
             total_time += dt
             print(f"  [{dt:4.1f}s] {sentence}\n          -> {out}")
-        print(f"Tempo: {total_chars / total_time:.0f} Zeichen/s")
+        print(f"speed: {total_chars / total_time:.0f} characters/s")
     finally:
         t2 = time.monotonic()
         server.stop()
         after = local_engine.wait_vram_released(before["free"], 0)
-        print(f"Entladen: {time.monotonic() - t2:.1f} s | VRAM frei vorher {before['free']} MB, nachher {after['free']} MB")
+        print(f"unload: {time.monotonic() - t2:.1f} s | graphics memory free before {before['free']} MB, after {after['free']} MB")
 
 
 if __name__ == "__main__":

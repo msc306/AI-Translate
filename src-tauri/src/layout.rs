@@ -1,4 +1,4 @@
-//! Fensterplatzierung: angedockt (AppBar) oder frei schwebend.
+//! Window placement: docked (AppBar) or floating.
 
 use std::path::PathBuf;
 
@@ -18,11 +18,11 @@ pub struct Rect {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Layout {
-    /// "docked" oder "floating"
+    /// "docked" or "floating"
     pub mode: String,
-    /// Geraetename des Bildschirms, z. B. \\.\DISPLAY3. Fehlt er, wird der Hauptbildschirm benutzt.
+    /// Device name of the monitor, e.g. \\.\DISPLAY3. Without it the primary monitor is used.
     pub monitor: String,
-    /// "right" oder "left"
+    /// "right" or "left"
     pub edge: String,
     pub width_percent: f64,
     pub floating: Option<Rect>,
@@ -55,7 +55,7 @@ fn file() -> PathBuf {
 }
 
 impl Layout {
-    /// Liefert (Layout, erster_start).
+    /// Returns (layout, first_start).
     pub fn load() -> (Self, bool) {
         match std::fs::read_to_string(file()) {
             Ok(text) => (serde_json::from_str(&text).unwrap_or_default(), false),
@@ -108,7 +108,7 @@ pub fn monitors(window: &WebviewWindow) -> Vec<MonitorInfo> {
         .collect()
 }
 
-/// Bildschirm laut Einstellung, sonst Hauptbildschirm, sonst der erste.
+/// The configured monitor, else the primary one, else the first.
 pub fn target_monitor(window: &WebviewWindow, layout: &Layout) -> Option<MonitorInfo> {
     let all = monitors(window);
     all.iter()
@@ -122,7 +122,7 @@ pub fn hwnd(window: &WebviewWindow) -> Option<isize> {
     window.hwnd().ok().map(|h| h.0 as isize)
 }
 
-/// Wendet das Layout an. `registered` merkt, ob das Fenster gerade als AppBar angemeldet ist.
+/// Applies the layout. `registered` tracks whether the window is currently registered as an AppBar.
 pub fn apply(window: &WebviewWindow, layout: &Layout, registered: &mut bool) -> tauri::Result<()> {
     let Some(mon) = target_monitor(window, layout) else { return Ok(()) };
     let Some(handle) = hwnd(window) else { return Ok(()) };

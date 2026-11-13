@@ -1,4 +1,4 @@
-//! Windows-AppBar: reserviert Bildschirmplatz wie die Taskleiste.
+//! Windows AppBar: reserves screen space the way the taskbar does.
 
 use windows::Win32::Foundation::{HWND, LPARAM, RECT};
 use windows::Win32::UI::Shell::{
@@ -31,8 +31,8 @@ pub fn remove(hwnd: isize) {
     }
 }
 
-/// Reserviert einen Streifen der Breite `width` am linken/rechten Rand des Monitors
-/// (`monitor` = left, top, right, bottom). Liefert das tatsaechlich zugeteilte Rechteck.
+/// Reserves a strip of `width` at the left or right edge of the monitor
+/// (`monitor` = left, top, right, bottom). Returns the rectangle the system actually granted.
 pub fn set_pos(hwnd: isize, left_edge: bool, monitor: (i32, i32, i32, i32), width: i32) -> (i32, i32, i32, i32) {
     let mut d = data(hwnd);
     d.uEdge = if left_edge { ABE_LEFT } else { ABE_RIGHT };
@@ -45,7 +45,7 @@ pub fn set_pos(hwnd: isize, left_edge: bool, monitor: (i32, i32, i32, i32), widt
     unsafe {
         SHAppBarMessage(ABM_QUERYPOS, &mut d);
     }
-    // Das System darf den Rand verschieben (z. B. wegen anderer Leisten): Breite wiederherstellen.
+    // The system may move the edge (other bars, for example): restore the width.
     if left_edge {
         d.rc.right = d.rc.left + width;
     } else {

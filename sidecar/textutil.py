@@ -1,4 +1,4 @@
-"""Spracherkennung (DE/EN) und Zerlegung langer Texte in Abschnitte."""
+"""Language detection (DE/EN) and splitting of long texts into sections."""
 from __future__ import annotations
 
 import re
@@ -19,7 +19,7 @@ _WORD = re.compile(r"[A-Za-zÄÖÜäöüß']+")
 
 
 def detect_language(text: str) -> str:
-    """Gibt 'de' oder 'en' zurueck. Bei Gleichstand 'de' (Hauptrichtung DE -> EN)."""
+    """Returns 'de' or 'en'. On a tie, 'de' (main direction DE -> EN)."""
     words = [w.lower() for w in _WORD.findall(text[:4000])]
     de = sum(w in _DE for w in words) + 2 * len(re.findall(r"[äöüßÄÖÜ]", text[:4000]))
     en = sum(w in _EN for w in words)
@@ -32,7 +32,7 @@ _SENTENCE_END = re.compile(r"(?<=[.!?…])\s+")
 def _split_long(paragraph: str, limit: int) -> list[str]:
     parts, current = [], ""
     for sentence in _SENTENCE_END.split(paragraph):
-        while len(sentence) > limit:  # Satz ohne Satzzeichen: hart an Leerzeichen trennen
+        while len(sentence) > limit:  # Sentence without punctuation: hard-split at a space
             cut = sentence.rfind(" ", 0, limit)
             cut = cut if cut > limit // 2 else limit
             if current:
@@ -51,10 +51,10 @@ def _split_long(paragraph: str, limit: int) -> list[str]:
 
 
 def chunk_text(text: str, limit: int = 1400) -> list[tuple[str, str]]:
-    """Zerlegt Text in (abschnitt, trenner)-Paare.
+    """Splits text into (section, separator) pairs.
 
-    Absaetze bleiben erhalten; der Trenner ist der Original-Leerraum nach dem
-    Abschnitt, damit die Ausgabe dieselbe Absatzstruktur bekommt.
+    Paragraphs are preserved; the separator is the original whitespace after the
+    section, so the output gets the same paragraph structure.
     """
     text = text.replace("\r\n", "\n").strip("\n")
     pieces = re.split(r"(\n\s*\n)", text)

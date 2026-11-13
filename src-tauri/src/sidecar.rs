@@ -1,4 +1,4 @@
-//! Python-Sidecar: JSON-Zeilen ueber stdin/stdout.
+//! Python sidecar: JSON lines over stdin/stdout.
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::windows::process::CommandExt;
@@ -18,7 +18,7 @@ pub struct Sidecar {
     error: Mutex<Option<String>>,
 }
 
-/// Ordner mit sidecar\main.py und packs\ (Projektordner bzw. Installationsordner).
+/// Folder that holds sidecar\main.py and packs\ (the project or installation folder).
 pub fn app_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("TURING_TRANSLATE_DIR") {
         return PathBuf::from(dir);
@@ -111,7 +111,7 @@ impl Sidecar {
         stdin.flush().map_err(|e| e.to_string())
     }
 
-    /// Beendet den Sidecar. Er entlaedt dabei das Modell und beendet llama-server.
+    /// Stops the sidecar, which unloads the model and ends llama-server on its way out.
     pub fn stop(&self) {
         let _ = self.send(&json!({"cmd": "shutdown"}));
         *self.stdin.lock().unwrap() = None; // EOF als zweite Sicherung

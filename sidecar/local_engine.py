@@ -1,7 +1,7 @@
-"""Lokale Uebersetzung mit llama-server (llama.cpp).
+"""Local translation with llama-server (llama.cpp).
 
-Der Server wird pro Uebersetzung gestartet und danach beendet. Nur ein
-beendeter Prozess gibt VRAM und RAM garantiert vollstaendig frei.
+The server is started per translation and stopped afterwards. Only a
+stopped process guarantees that VRAM and RAM are fully released.
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def _version_key(path: Path):
 
 
 def find_llama_server(configured: str, app_dir: Path) -> tuple[Path, list[Path]]:
-    """Sucht llama-server.exe. Rueckgabe: (exe, zusaetzliche DLL-Suchpfade)."""
+    """Searches for llama-server.exe. Returns: (exe, additional DLL search paths)."""
     if configured and configured != "auto":
         exe = Path(configured)
         if exe.is_file():
@@ -68,7 +68,7 @@ def find_llama_server(configured: str, app_dir: Path) -> tuple[Path, list[Path]]
 
 
 def list_models(app_dir: Path) -> list[dict]:
-    """Alle GGUF-Sprachmodelle aus LM Studio und dem models-Ordner der App."""
+    """All GGUF language models from LM Studio and the app's models folder."""
     found = []
     for root in (LMSTUDIO / "models", app_dir / "models"):
         if not root.is_dir():
@@ -81,7 +81,7 @@ def list_models(app_dir: Path) -> list[dict]:
 
 
 def required_vram_mb(model_path: Path, context_tokens: int) -> int:
-    """Grobe Schaetzung: Gewichte + Kontextpuffer + Rechenpuffer."""
+    """Rough estimate: weights + context buffer + compute buffer."""
     weights = model_path.stat().st_size / 2**20
     return int(weights * 1.08 + context_tokens * 0.12 + 600)
 
@@ -93,7 +93,7 @@ def _free_port() -> int:
 
 
 class LlamaServer:
-    """Ein laufender llama-server-Prozess mit genau einem geladenen Modell."""
+    """A running llama-server process with exactly one loaded model."""
 
     def __init__(self, exe: Path, dll_dirs: list[Path], model_path: Path, context_tokens: int, log_file: Path):
         self.model_path = model_path
@@ -144,7 +144,7 @@ class LlamaServer:
         raise EngineError("load_failed", "Zeitueberschreitung beim Laden des Modells.")
 
     def chat_stream(self, messages: list[dict], max_tokens: int, cancel: threading.Event):
-        """Generator ueber Textstuecke der Antwort."""
+        """Generator over text pieces of the response."""
         body = json.dumps(
             {
                 "messages": messages,
@@ -183,7 +183,7 @@ class LlamaServer:
             conn.close()
 
     def stop(self) -> None:
-        """Beendet den Prozess und wartet, bis er wirklich weg ist."""
+        """Terminates the process and waits until it is really gone."""
         if self.proc.poll() is None:
             self.proc.terminate()
             try:
@@ -198,7 +198,7 @@ class LlamaServer:
 
 
 def wait_vram_released(before_free_mb: int | None, gpu_index: int, timeout: float = 3.0) -> dict | None:
-    """Wartet kurz, bis der Treiber den freigegebenen Speicher meldet."""
+    """Waits briefly until the driver reports the released memory."""
     deadline = time.monotonic() + timeout
     state = gpu.vram_mb(gpu_index)
     while state and before_free_mb is not None and state["free"] < before_free_mb - 300 and time.monotonic() < deadline:

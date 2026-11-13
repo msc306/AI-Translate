@@ -1,7 +1,7 @@
-"""Windows-Job-Objekt: Kindprozesse sterben garantiert mit, wenn der Sidecar endet.
+"""Windows job object: child processes are guaranteed to die with the sidecar when it exits.
 
-Ohne das koennte ein hart beendeter Sidecar einen llama-server zuruecklassen,
-der das Modell weiter im VRAM haelt.
+Without this, a hard-killed sidecar could leave behind a llama-server
+that keeps the model loaded in VRAM.
 """
 from __future__ import annotations
 
@@ -67,7 +67,7 @@ def _job():
 
 
 def bind_to_parent(proc) -> bool:
-    """Haengt einen subprocess.Popen an das Job-Objekt. False, wenn das nicht moeglich war."""
+    """Attaches a subprocess.Popen to the job object. Returns False if that was not possible."""
     if sys.platform != "win32":
         return False
     try:

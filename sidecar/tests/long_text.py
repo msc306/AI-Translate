@@ -1,6 +1,6 @@
-"""Prueft, ob ein langer Text vollstaendig uebersetzt wird (Absatzzahl bleibt gleich).
+"""Check that a long text is translated completely (the number of paragraphs stays the same).
 
-Aufruf:  python sidecar/tests/long_text.py [small|medium|large]
+Usage:  python sidecar/tests/long_text.py [small|medium|large]
 """
 from __future__ import annotations
 
@@ -49,6 +49,8 @@ def main() -> None:
         event = json.loads(line)
         if event["event"] == "delta":
             out += event["text"]
+        elif event["event"] == "replace":
+            out = event["text"]
         if event["event"] in ("done", "error"):
             last = event
             break
@@ -56,10 +58,11 @@ def main() -> None:
     proc.stdin.flush()
     proc.wait(timeout=30)
     got = [p for p in out.split("\n\n") if p.strip()]
-    print(f"{size}: Eingabe {len(text)} Zeichen / {len(PARAGRAPHS)} Absaetze -> Ausgabe {len(out)} Zeichen / {len(got)} Absaetze")
-    print("Ende:", {k: last.get(k) for k in ("event", "code", "message", "seconds", "unloaded") if k in last})
-    print("Erster:", got[0] if got else "-")
-    print("Letzter:", got[-1] if got else "-")
+    print(f"{size}: input {len(text)} characters / {len(PARAGRAPHS)} paragraphs -> output {len(out)} characters / {len(got)} paragraphs")
+    print("tags echoed:", "<text>" in out or "</text>" in out)
+    print("end:", {k: last.get(k) for k in ("event", "code", "message", "seconds", "unloaded") if k in last})
+    print("first:", got[0] if got else "-")
+    print("last:", got[-1] if got else "-")
 
 
 if __name__ == "__main__":

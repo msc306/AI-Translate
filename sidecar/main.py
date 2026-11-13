@@ -453,18 +453,23 @@ class Sidecar:
             session = self._open(req_id, req, full)
 
             def stream_chunk(messages, chunk):
-                parts = []
+                # Some models echo the <text> wrapper. It is filtered while streaming: a leading tag is
+                # dropped and the last few characters are held back until it is clear they are no closing tag.
+                raw, shown = "", 0
+
+                def show(upto_text):
+                    nonlocal shown
+                    if len(upto_text) > shown:
+                        emit({"id": req_id, "event": "delta", "text": upto_text[shown:]})
+                        shown = len(upto_text)
+
                 for piece in session["run"](messages, len(chunk) // 2 + 256):
-                    if not parts:
-                        piece = piece.lstrip()
-                        if not piece:
-                            continue
-                    parts.append(piece)
-                    emit({"id": req_id, "event": "delta", "text": piece})
-                output = "".join(parts)
-                clean = prompting.strip_wrapper(output)
-                if clean != output:  # the model echoed the <text> wrapper: show the cleaned text
-                    emit({"id": req_id, "event": "replace", "text": done_text + clean})
+                    raw += piece
+                    body = prompting.unwrap_start(raw)
+                    if body is not None:
+                        show(body[:max(0, len(body) - prompting.HOLD_BACK)].rstrip())
+                clean = prompting.strip_wrapper(raw).strip()
+                show(clean)
                 return clean
 
             done_text = ""

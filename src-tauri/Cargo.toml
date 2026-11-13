@@ -1,6 +1,9 @@
 [package]
 name = "turing-translate"
-version = "0.1.0"
+version = "0.2.0"
+description = "Docked desktop translator with local and cloud models"
+license = "MIT"
+repository = "https://github.com/msc306/AI-Translate"
 edition = "2021"
 
 [build-dependencies]

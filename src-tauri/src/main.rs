@@ -19,7 +19,7 @@ use layout::{Layout, MonitorInfo, Rect};
 
 struct AppState {
     layout: Mutex<Layout>,
-    /// true, solange das Fenster als AppBar angemeldet ist
+    /// true while the window is registered as an AppBar
     registered: Mutex<bool>,
     sidecar: sidecar::Sidecar,
     hotkeys: Mutex<(Option<Shortcut>, Option<Shortcut>)>,
@@ -37,7 +37,7 @@ fn show(app: &AppHandle) {
     show_window(app, true);
 }
 
-/// `focus = false` beim Programmstart: die Leiste erscheint, ohne der laufenden Arbeit den Fokus zu nehmen.
+/// `focus = false` at program start: the bar appears without taking the focus from running work.
 fn show_window(app: &AppHandle, focus: bool) {
     apply_current(app);
     if let Some(window) = app.get_webview_window("main") {
@@ -108,7 +108,7 @@ fn register_hotkeys(app: &AppHandle) {
     *state.hotkeys.lock().unwrap() = (toggle, clipboard);
 }
 
-// ---------- Befehle fuer die Oberflaeche ----------
+// ---------- Commands for the interface ----------
 
 /// Native file picker. `kind` is "model" (.gguf) or "pack" (language pack .zip / manifest.json).
 /// Async so the blocking dialog never runs on the main thread.
@@ -282,7 +282,7 @@ fn main() {
             let handle = app.handle().clone();
             app.state::<AppState>().sidecar.start(&handle);
 
-            // Beim ersten Start einschalten; danach nur den Pfad auffrischen, falls die EXE verschoben wurde.
+            // Switch on at the first start; later only refresh the path in case the EXE was moved.
             if first_run || app.autolaunch().is_enabled().unwrap_or(false) {
                 let _ = app.autolaunch().enable();
             }
@@ -331,7 +331,7 @@ fn main() {
                 hide(window.app_handle());
             }
             WindowEvent::Moved(_) | WindowEvent::Resized(_) => {
-                // Position des frei schwebenden Fensters merken
+                // Remember the position of the floating window
                 let state = window.state::<AppState>();
                 let Ok(mut current) = state.layout.try_lock() else { return };
                 if current.mode != "floating"

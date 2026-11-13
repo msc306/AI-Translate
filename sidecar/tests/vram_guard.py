@@ -1,9 +1,9 @@
-"""Prueft die VRAM-Sperre und die API-Sperre.
+"""Check the two guards that must stop a request before anything happens.
 
-1. Reserve groesser als der Grafikspeicher -> vram_insufficient, es wird nichts geladen.
-2. engine "claude_api" ohne Freischaltung -> engine_disabled, es wird nichts gesendet.
+1. Reserve larger than the graphics memory -> vram_insufficient, nothing is loaded.
+2. Engine "claude_api" not enabled -> engine_disabled, nothing is sent.
 
-Aufruf:  python sidecar/tests/vram_guard.py
+Usage:  python sidecar/tests/vram_guard.py
 """
 from __future__ import annotations
 
@@ -43,9 +43,9 @@ def main() -> None:
 
     text = "Das ist ein Satz, der nicht im Phrasenbuch steht."
     a = run({"id": 1, "cmd": "translate", "text": text, "size": "small"})
-    print("VRAM-Sperre:", {k: a.get(k) for k in ("event", "code", "free_mb", "need_mb", "reserve_mb")}, "| llama-server laeuft:", llama_running())
+    print("VRAM guard:", {k: a.get(k) for k in ("event", "code", "free_mb", "need_mb", "reserve_mb")}, "| llama-server running:", llama_running())
     b = run({"id": 2, "cmd": "translate", "text": text, "engine": "claude_api"})
-    print("API-Sperre:", {k: b.get(k) for k in ("event", "code", "message")})
+    print("provider guard:", {k: b.get(k) for k in ("event", "code", "message")})
     proc.stdin.write(json.dumps({"id": 3, "cmd": "shutdown"}) + "\n")
     proc.stdin.flush()
     proc.wait(timeout=30)

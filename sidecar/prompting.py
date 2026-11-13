@@ -50,6 +50,19 @@ STYLES = {
 }
 
 
+HOLD_BACK = len("</text>") + 1  # characters kept back while streaming, in case they are a closing tag
+
+
+def unwrap_start(partial: str) -> str | None:
+    """Return streamed output without a leading <text> tag, or None while that is still undecided."""
+    out = partial.lstrip()
+    if len(out) < len("<text>") and "<text>".startswith(out):
+        return None
+    if out.startswith("<text>"):
+        out = out[len("<text>"):].lstrip()
+    return out
+
+
 def strip_wrapper(output: str) -> str:
     """Remove <text> tags a model may echo around its translation."""
     out = output.strip()

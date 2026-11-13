@@ -82,7 +82,7 @@ function note(text) {
   else setStatus(text);
 }
 
-// ---------- Übersetzen ----------
+// ---------- Translate ----------
 
 function clearResult() {
   state.output = "";
@@ -274,7 +274,7 @@ function onError(e) {
   showError(text);
 }
 
-// ---------- Sidecar-Ereignisse ----------
+// ---------- Sidecar events ----------
 
 function onSidecar(e) {
   switch (e.event) {
@@ -408,7 +408,7 @@ function applyStatusInfo(info) {
   if (first) requestPhrases();
 }
 
-// ---------- Einstellungen ----------
+// ---------- Settings ----------
 
 function setConfig(config) {
   send({ cmd: "set_config", config });
@@ -527,7 +527,7 @@ function renderSettings(info) {
   if (before[0] !== $("ph-source").value || before[1] !== $("ph-target").value) requestPhrases();
 }
 
-// ---------- Phrasenbuch ----------
+// ---------- Phrasebook ----------
 
 function requestPhrases() {
   if (!$("ph-source").value || !$("ph-target").value) return;
@@ -562,7 +562,7 @@ function savePhrase(source, target, sourceText, targetText) {
   return true;
 }
 
-// ---------- Verlauf ----------
+// ---------- History ----------
 
 function historyCommand(cmd, extra = {}) {
   return send({ cmd, query: $("hist-filter").value, corrected_only: $("hist-corrected").checked, ...extra });
@@ -624,7 +624,7 @@ function renderHistory() {
   }));
 }
 
-// ---------- Fenster ----------
+// ---------- Window ----------
 
 function applyLayout(layout) {
   state.layout = layout;
@@ -870,7 +870,7 @@ async function init() {
   };
   $("ph-filter").oninput = renderPhrases;
 
-  // Falls der Sidecar schon bereit war, bevor die Oberfläche zuhörte.
+  // If the sidecar was already ready before the UI started listening.
   send({ cmd: "status" });
 }
 

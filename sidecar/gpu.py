@@ -1,4 +1,4 @@
-"""VRAM-Abfrage ueber nvidia-smi (keine Zusatzpakete noetig)."""
+"""VRAM query via nvidia-smi (no extra packages needed)."""
 from __future__ import annotations
 
 import subprocess
@@ -7,7 +7,7 @@ NO_WINDOW = 0x08000000  # CREATE_NO_WINDOW
 
 
 def vram_mb(gpu_index: int = 0) -> dict | None:
-    """Liefert {'free': MiB, 'used': MiB, 'total': MiB} oder None, wenn keine NVIDIA-GPU abfragbar ist."""
+    """Returns {'free': MiB, 'used': MiB, 'total': MiB}, or None if no NVIDIA GPU can be queried."""
     try:
         out = subprocess.run(
             [
