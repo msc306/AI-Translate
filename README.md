@@ -53,7 +53,9 @@ andockt wie eine zweite Taskleiste. Er übersetzt mit einem Modell auf der eigen
    - **Laufzeit und Modell herunterladen** lädt die llama.cpp-Laufzeit (CUDA 12.4, ca. 680 MB) und
      das kleine Modell Gemma 4 E2B (Apache-2.0, ca. 3,3 GB) nach `%LOCALAPPDATA%\TuringTranslate`.
      Jede Datei wird anhand ihrer Prüfsumme kontrolliert; ein abgebrochener Download setzt beim
-     nächsten Mal fort. Danach übersetzt das Programm ohne Internet.
+     nächsten Mal fort; bleibt die Verbindung hängen, startet der Download von selbst neu. Danach
+     übersetzt das Programm ohne Internet. Die allererste Übersetzung kann gut eine Minute dauern,
+     weil Windows das Modell erstmals von der Platte liest; danach dauert ein Satz wenige Sekunden.
    - Ohne NVIDIA-Grafikkarte, oder wer nichts herunterladen möchte, wählt in den Einstellungen einen
      Anbieter im Internet.
 3. Größere Modelle (mittel, groß) lassen sich in den Einstellungen als GGUF-Datei auswählen.

@@ -10,7 +10,8 @@ Alle nennenswerten Änderungen an diesem Projekt.
   Programm nur nutzen will, braucht weder Node.js noch Rust.
 - „Erste Schritte“ im Fenster, solange weder ein lokales Modell noch ein Anbieter eingerichtet ist.
 - Download der llama.cpp-Laufzeit und eines kleinen Modells aus dem Programm heraus, mit
-  Prüfsumme, Fortsetzen nach Abbruch und Fortschrittsanzeige.
+  Prüfsumme, Fortsetzen nach Abbruch und Fortschrittsanzeige. Hängt die Verbindung, startet der
+  Download nach 90 Sekunden ohne Fortschritt selbst neu.
 
 ### Geändert
 

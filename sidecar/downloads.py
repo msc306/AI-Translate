@@ -57,6 +57,9 @@ CATALOG = {
 CHUNK = 1 << 20
 ATTEMPTS = 6
 USER_AGENT = "TuringTranslate"
+STALLED = -1            # pseudo exit code: the .part file stopped growing
+STALL_SECONDS = 90      # no new byte for this long counts as a stalled transfer
+STALL_RESTARTS = 5
 NO_WINDOW = 0x08000000
 CURL = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "curl.exe"
 
@@ -77,6 +80,7 @@ class Downloader:
         self.emit = emit
         self.catalog = catalog or CATALOG
         self.allow_http = allow_http  # tests only: a local server without TLS
+        self.stall_seconds = STALL_SECONDS
         self.jobs: dict[str, tuple[threading.Thread, threading.Event]] = {}
         self.lock = threading.Lock()
 
@@ -196,15 +200,24 @@ class Downloader:
     def _fetch_curl(self, item, req_id, spec, part: Path, cancel, before_mb: int, total_mb: int) -> None:
         """Windows' own curl uses the system TLS stack, which fetches missing root certificates on demand;
         Python's ssl module does not and fails on some hosts (seen with GitHub's release downloads)."""
-        for attempt in (1, 2):
+        restarted = stalls = 0
+        while True:
             code, error = self._run_curl(item, req_id, spec, part, cancel, before_mb, total_mb)
             if code == 0:
                 return
-            if code == 33 and attempt == 1:
+            if code == STALLED and stalls < STALL_RESTARTS:
+                # curl's own low-speed limit does not catch a connection that never sends a byte;
+                # start curl again, it resumes from the .part file.
+                stalls += 1
+                continue
+            if code == 33 and not restarted:
                 # The server refused to resume (or the .part file is already complete or too long):
                 # start over; the checksum decides afterwards.
+                restarted = 1
                 part.unlink(missing_ok=True)
                 continue
+            if code == STALLED:
+                error = "Der Server sendet keine Daten mehr."
             raise DownloadError(f"Download von {spec['name']} fehlgeschlagen: {error or f'curl {code}'}")
 
     def _run_curl(self, item, req_id, spec, part: Path, cancel, before_mb: int, total_mb: int) -> tuple[int, str]:
@@ -216,6 +229,7 @@ class Downloader:
                    "--user-agent", USER_AGENT, "--continue-at", "-", "--output", str(part), spec["url"]]
         process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                    stderr=subprocess.PIPE, creationflags=NO_WINDOW)
+        last_size, last_growth = -1, time.monotonic()
         try:
             while process.poll() is None:
                 if cancel.wait(0.5):
@@ -223,6 +237,13 @@ class Downloader:
                     process.wait()
                     raise Cancelled()
                 have = part.stat().st_size if part.is_file() else 0
+                now = time.monotonic()
+                if have != last_size:
+                    last_size, last_growth = have, now
+                elif now - last_growth > self.stall_seconds:
+                    process.kill()
+                    process.wait()
+                    return STALLED, ""
                 self._report(item, req_id, "running", file=spec["name"],
                              done_mb=before_mb + have // 2**20, total_mb=total_mb)
             error = process.stderr.read().decode("utf-8", "replace").strip()

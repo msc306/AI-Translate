@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import zipfile
 from pathlib import Path
 
@@ -450,14 +451,26 @@ def test_downloads():
         with zipfile.ZipFile(lib_zip, "w") as bundle:
             bundle.writestr("cudart64_12.dll", b"cuda")
         model = bytes(range(256)) * 9000
-        files = {"/rt.zip": exe_zip.getvalue(), "/lib.zip": lib_zip.getvalue(), "/m.gguf": model}
+        files = {"/rt.zip": exe_zip.getvalue(), "/lib.zip": lib_zip.getvalue(), "/m.gguf": model,
+                 "/slow.gguf": model}
         requests = []
+        stalled = threading.Event()
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
                 body = files.get(self.path)
                 if body is None:
                     self.send_error(404)
+                    return
+                if self.path == "/slow.gguf" and not stalled.is_set():
+                    # first request: answer the headers, then never send a byte
+                    stalled.set()
+                    requests.append(("stall", self.path, 0))
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.flush()
+                    time.sleep(8)
                     return
                 start = 0
                 if self.headers.get("Range"):
@@ -486,13 +499,15 @@ def test_downloads():
                         "files": [spec("rt.zip", "/rt.zip", files["/rt.zip"]), spec("lib.zip", "/lib.zip", files["/lib.zip"])]},
             "model_small": {"kind": "model", "label": "m", "size_mb": 1, "files": [spec("m.gguf", "/m.gguf", model)]},
             "broken": {"kind": "model", "label": "b", "size_mb": 1, "files": [spec("b.gguf", "/m.gguf", model, "0" * 64)]},
+            "slow": {"kind": "model", "label": "s", "size_mb": 1, "files": [spec("s.gguf", "/slow.gguf", model)]},
         }
         events = []
         loader = downloads.Downloader(work / "data", events.append, catalog, allow_http=True)
+        loader.stall_seconds = 2
         try:
             (work / "data" / "downloads").mkdir(parents=True)
             (work / "data" / "downloads" / "m.gguf.part").write_bytes(model[:1000])  # interrupted earlier
-            for item in ("runtime", "model_small", "broken"):
+            for item in ("runtime", "model_small", "broken", "slow"):
                 loader.start(item, item)
             loader.wait(30)
         finally:
@@ -510,6 +525,9 @@ def test_downloads():
         expect("download resumes with a range request", ("range", "/m.gguf", 1000) in requests, str(requests))
         expect("download rejects a wrong checksum", final["broken"]["state"] == "error"
                and "Prüfsumme" in final["broken"]["message"] and not (work / "data" / "models" / "b.gguf").exists())
+        if downloads.CURL.is_file():
+            expect("download restarts a stalled transfer", final["slow"]["state"] == "done"
+                   and (work / "data" / "models" / "s.gguf").read_bytes() == model, str(final.get("slow")))
         state = {s["item"]: s for s in loader.state()}
         expect("download state reports installed items", state["runtime"]["installed"] and state["model_small"]["installed"]
                and not state["broken"]["installed"])
