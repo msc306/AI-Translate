@@ -19,6 +19,8 @@ Commands and the events that answer them:
   pack_index -> pack_index        provider_models -> provider_models
   download {item: runtime|model_small} | download_cancel {item?}
       -> download {item, state: running|verifying|extracting|done|cancelled|error, done_mb?, total_mb?, message?}
+  ocr {clipboard?: true, path?, lang?}
+      -> ocr {text, lang, matched, available}   text read from a screenshot by the Windows text recogniser
 Failures are reported as error {code, message}.
 """
 import argparse
@@ -37,6 +39,7 @@ import history
 import gpu
 import languages
 import local_engine
+import ocr
 import phrases
 import prompting
 import providers
@@ -706,6 +709,9 @@ class Sidecar:
                 emit({"id": req_id, "event": "error", "code": "download_failed", "message": str(err)})
         elif cmd == "download_cancel":
             self.downloader.cancel(req.get("item") or None)
+        elif cmd == "ocr":
+            # the recogniser takes a second or two; keep reading commands meanwhile
+            threading.Thread(target=self.read_image, args=(req,), daemon=True).start()
         elif cmd == "shutdown":
             self.stop_worker()
             self.unload()
@@ -714,6 +720,17 @@ class Sidecar:
         else:
             emit({"id": req_id, "event": "error", "code": "unknown_command", "message": f"Unbekannter Befehl: {cmd}"})
         return True
+
+    def read_image(self, req: dict) -> None:
+        """Read the text in a screenshot (clipboard or file) and report it as an `ocr` event."""
+        req_id = req.get("id")
+        lang = str(req.get("lang") or "")
+        try:
+            result = ocr.read_image(path=str(req.get("path") or ""), clipboard=bool(req.get("clipboard")),
+                                    lang="" if lang == "auto" else lang)
+            emit({"id": req_id, "event": "ocr", **result})
+        except ocr.OcrError as err:
+            emit({"id": req_id, "event": "error", "code": "ocr_" + err.code, "message": str(err)})
 
     def stop_worker(self) -> None:
         if self.worker and self.worker.is_alive():

@@ -19,6 +19,9 @@ andockt wie eine zweite Taskleiste. Er übersetzt mit einem Modell auf der eigen
 
 - **Lokal oder im Internet übersetzen.** Lokal mit einem GGUF-Modell (klein, mittel, groß – jeweils
   frei wählbar), oder über Claude bzw. OpenAI-kompatible Dienste.
+- **Screenshots übersetzen.** Ein eingefügtes Bild wird mit der Texterkennung von Windows gelesen;
+  der erkannte Text landet im Eingabefeld und wird wie getippter Text übersetzt. Das Bild verlässt
+  den PC nicht.
 - **Abo statt API-Schlüssel.** Ein Claude-Abo (Pro/Max) lässt sich über das Programm Claude Code
   nutzen, ein ChatGPT-Abo über die Codex-CLI. API-Schlüssel funktionieren ebenfalls.
 - **Phrasengedächtnis.** Redewendungen werden sinngemäß übersetzt („Ich verstehe nur Bahnhof“ →
@@ -110,6 +113,10 @@ Embeddable-Python von python.org zusammen, prüft, dass der Sidecar damit starte
 
 - `Strg+Alt+T` blendet das Fenster ein und aus, `Strg+Alt+U` übersetzt den Inhalt der
   Zwischenablage. Das Programm sitzt außerdem im Infobereich der Taskleiste.
+- Screenshots: Bildausschnitt mit `Win+Umschalt+S` aufnehmen und mit `Strg+V` einfügen (oder
+  „Einfügen“ bzw. `Strg+Alt+U`). Die Texterkennung nutzt die in Windows installierten Sprachen. Fehlt
+  die Sprache des Bildes, liest sie mit einer anderen und einzelne Zeichen können falsch sein;
+  nachinstallieren lässt sie sich unter Einstellungen → Zeit und Sprache → Sprache und Region.
 - Quell- und Zielsprache, Anbieter, Modellgröße und Stil stehen über dem Eingabefeld. Steht die
   Quellsprache auf „automatisch“, wird die Richtung erkannt.
 - Das Ergebnis lässt sich direkt im Ergebnisfeld ändern. Die Änderung wird als Korrektur im

@@ -18,6 +18,8 @@ const state = {
   autoTimer: null,
   pendingPack: null,
   explainId: null,
+  ocrId: null,
+  ocrNote: null,
   history: [],
   quietHistoryId: null,
   sentCorrection: "",
@@ -43,6 +45,7 @@ const STAGES = {
   clarify: "Prüfe, ob der Text eindeutig ist …",
   review: "Prüfe die Übersetzung noch einmal …",
   explaining: "Erkläre die Übersetzung …",
+  ocr: "Lese den Text aus dem Bild …",
 };
 const SIZE_LABELS = { small: "Klein", medium: "Mittel", large: "Groß" };
 const PROVIDERS = ["claude_sub", "claude_api", "chatgpt_sub", "openai_api"];
@@ -209,6 +212,37 @@ function onExplanation(e) {
   $("explain").hidden = false;
 }
 
+/** Read the text from the screenshot in the clipboard, put it into the input and translate it. */
+function readScreenshot() {
+  if (state.busy) send({ cmd: "cancel" });
+  state.translateId = null; // the answer of a translation still running is no longer wanted
+  clearTimeout(state.autoTimer);
+  showView("main");
+  clearResult();
+  setBusy(true);
+  setStatus(STAGES.ocr, true);
+  state.ocrId = send({ cmd: "ocr", clipboard: true, lang: $("source").value || "auto" });
+}
+
+function onOcr(e) {
+  if (e.id !== state.ocrId) return;
+  state.ocrId = null;
+  const wanted = $("source").value || "auto";
+  state.ocrNote = e.matched || wanted === "auto" ? null : {
+    text: e.text,
+    message: `Für ${languageLabel(wanted)} ist in Windows keine Texterkennung installiert, gelesen wurde mit ` +
+      `„${e.lang}“. Einzelne Zeichen können falsch sein – der erkannte Text lässt sich oben korrigieren.`,
+  };
+  $("input").value = e.text;
+  translate();
+}
+
+/** True when a paste carries a picture and no text, as a screenshot does. */
+function isImagePaste(data) {
+  if (!data || data.getData("text/plain")) return false;
+  return [...data.items].some((item) => item.kind === "file" && item.type.startsWith("image/"));
+}
+
 function scheduleAuto(delay) {
   clearTimeout(state.autoTimer);
   if (!$("auto").checked) return;
@@ -244,6 +278,7 @@ function onDone(e) {
 
   const lines = (e.warnings || []).map((w) => "⚠ " + w.message)
     .concat((e.review?.issues || []).map((issue) => "✎ Korrigiert: " + issue));
+  if (state.ocrNote?.text === state.lastRequest?.text) lines.push("⚠ " + state.ocrNote.message);
   $("warnings").hidden = !lines.length;
   $("warnings").textContent = lines.join("\n");
 
@@ -331,7 +366,16 @@ function onSidecar(e) {
     case "download":
       onDownload(e);
       break;
+    case "ocr":
+      onOcr(e);
+      break;
     case "error":
+      if (e.id === state.ocrId) {
+        state.ocrId = null;
+        setBusy(false);
+        setStatus(e.message);
+        return;
+      }
       if (e.id === state.explainId) {
         state.explainId = null;
         setBusy(false);
@@ -867,12 +911,27 @@ async function init() {
 
   $("input").addEventListener("input", () => scheduleAuto(1200));
   $("input").addEventListener("paste", () => scheduleAuto(150));
+  // a pasted screenshot is read as text, wherever the focus is in the main view
+  document.addEventListener("paste", (e) => {
+    if ($("view-main").hidden || !isImagePaste(e.clipboardData)) return;
+    e.preventDefault();
+    readScreenshot();
+  });
   $("input").addEventListener("keydown", (e) => {
     if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); translate(); }
   });
 
   $("btn-translate").onclick = () => translate();
-  $("btn-cancel").onclick = () => send({ cmd: "cancel" });
+  $("btn-cancel").onclick = () => {
+    if (state.ocrId != null) {
+      // the recogniser cannot be stopped; its answer is ignored instead
+      state.ocrId = null;
+      setBusy(false);
+      setStatus("Abgebrochen.");
+      return;
+    }
+    send({ cmd: "cancel" });
+  };
   $("btn-paste").onclick = pasteAndTranslate;
   $("btn-clear").onclick = () => {
     send({ cmd: "cancel" });
@@ -984,7 +1043,11 @@ async function init() {
 
 async function pasteAndTranslate() {
   const text = await invoke("read_clipboard");
-  if (!text) return;
+  if (!text) {
+    // no text: the clipboard may hold a screenshot
+    readScreenshot();
+    return;
+  }
   showView("main");
   $("input").value = text;
   translate();

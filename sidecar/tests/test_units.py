@@ -533,7 +533,50 @@ def test_downloads():
                and not state["broken"]["installed"])
 
 
+def test_ocr():
+    """Layout of recognised lines, and the recogniser itself where Windows provides one."""
+    import ocr
+
+    def line(text, x, y, w, h=20):
+        return {"text": text, "x": x, "y": y, "w": w, "h": h}
+
+    prose = [line("This is a long line of prose that runs to the edge", 10, 10, 600),
+             line("and goes on in the next line.", 10, 36, 300),
+             line("A second paragraph starts here.", 10, 100, 320)]
+    expect("ocr joins wrapped lines and keeps paragraphs", ocr.layout_text(prose, "en")
+           == "This is a long line of prose that runs to the edge and goes on in the next line.\n\n"
+              "A second paragraph starts here.", repr(ocr.layout_text(prose, "en")))
+    menu = [line("File", 10, 10, 40), line("Edit", 10, 36, 40), line("View", 10, 62, 44)]
+    expect("ocr keeps short lines apart", ocr.layout_text(menu, "en") == "File\nEdit\nView",
+           repr(ocr.layout_text(menu, "en")))
+    expect("ocr handles no lines", ocr.layout_text([], "en") == "")
+    # the recogniser reports the labels of a list as a column of their own
+    choices = [line("A.", 160, 240, 50, 40), line("B.", 160, 380, 50, 40),
+               line("To serve as the engine", 350, 240, 900, 55), line("To manage the context", 350, 380, 900, 55)]
+    expect("ocr puts labels beside their lines", ocr.layout_text(choices, "en")
+           == "A. To serve as the engine\n\nB. To manage the context", repr(ocr.layout_text(choices, "en")))
+    columns = [line("Left column of prose text", 10, 10, 600), line("Right column of prose text", 700, 10, 600)]
+    expect("ocr leaves columns of prose apart", "\n" in ocr.layout_text(columns, "en"),
+           repr(ocr.layout_text(columns, "en")))
+    try:
+        ocr.read_image(path=str(Path(tempfile.gettempdir()) / "tt-no-such-image.png"))
+        expect("ocr reports a missing file", False)
+    except ocr.OcrError as err:
+        expect("ocr reports a missing file", err.code in ("no_file", "unsupported", "no_language"), err.code)
+
+    events = []
+    original = sidecar_main.emit
+    sidecar_main.emit = events.append
+    try:
+        sidecar_main.Sidecar.read_image(None, {"id": 7, "path": "tt-no-such-image.png", "lang": "auto"})
+    finally:
+        sidecar_main.emit = original
+    expect("ocr command answers with an error event", len(events) == 1 and events[0]["id"] == 7
+           and events[0]["event"] == "error" and events[0]["code"].startswith("ocr_"), str(events))
+
+
 if __name__ == "__main__":
+    test_ocr()
     test_downloads()
     test_languages()
     test_checks()

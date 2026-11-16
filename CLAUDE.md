@@ -67,6 +67,10 @@ Erledigtes wird abgehakt, Neues unten angehängt.
 - [x] A4 Vektordatenbank (ChromaDB) für das Phrasengedächtnis: ähnliche Einträge finden, auch wenn die
       Formulierung abweicht
 - [x] A5 Sauberes Repo für GitHub: `.gitignore`, README, Einrichtungsskript, keine privaten Daten
+- [x] A6 Screenshots einfügen: Text aus dem Bild lesen und als Text übersetzen
+      `sidecar/ocr.py` ruft die Texterkennung von Windows (Windows.Media.Ocr) über PowerShell auf, ohne
+      Zusatzpaket und für jede Engine gleich. Befehl `ocr`; das Sidecar liest das Bild selbst aus der
+      Zwischenablage. Der erkannte Text ist Material wie jeder andere Eingabetext.
 
 ### B. Aus dem Kurs übernommen
 
