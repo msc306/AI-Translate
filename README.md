@@ -18,7 +18,7 @@ andockt wie eine zweite Taskleiste. Er übersetzt mit einem Modell auf der eigen
 ## Was er kann
 
 - **Lokal oder im Internet übersetzen.** Lokal mit einem GGUF-Modell (klein, mittel, groß – jeweils
-  frei wählbar), oder über Claude bzw. OpenAI-kompatible Dienste.
+  frei wählbar), oder über Claude, OpenRouter bzw. OpenAI-kompatible Dienste.
 - **Screenshots übersetzen.** Ein eingefügtes Bild wird mit der Texterkennung von Windows gelesen;
   der erkannte Text landet im Eingabefeld und wird wie getippter Text übersetzt. Das Bild verlässt
   den PC nicht.
@@ -28,8 +28,10 @@ andockt wie eine zweite Taskleiste. Er übersetzt mit einem Modell auf der eigen
   „It's all Greek to me“). Eigene Einträge und Korrekturen werden gespeichert. Eine
   Vektordatenbank (ChromaDB) findet auch Einträge, die nur ähnlich formuliert sind; die Anzeige
   zeigt, welche Einträge in eine Übersetzung eingeflossen sind.
-- **Mehrere Sprachen.** 24 Sprachen lassen sich in den Einstellungen einschalten; Sprachpakete mit
+- **Mehrere Sprachen.** 26 Sprachen lassen sich in den Einstellungen einschalten; Sprachpakete mit
   Redewendungen können aus einer Datei oder von einer Adresse geladen werden.
+- **Oberfläche in vier Sprachen.** Deutsch, Englisch, Spanisch oder Französisch, wählbar in der
+  Titelleiste neben dem Namen oder in den Einstellungen.
 - **Stilwahl.** Neutral, förmlich, locker oder wörtlich.
 - **Prüfung der Ausgabe.** Leere, unübersetzte oder auffällig kurze/lange Ergebnisse werden einmal
   neu versucht und sonst mit einem Hinweis markiert.
@@ -121,8 +123,9 @@ Embeddable-Python von python.org zusammen, prüft, dass der Sidecar damit starte
   Quellsprache auf „automatisch“, wird die Richtung erkannt.
 - Das Ergebnis lässt sich direkt im Ergebnisfeld ändern. Die Änderung wird als Korrektur im
   Verlauf gespeichert und lässt sich als Phrase übernehmen.
-- In den Einstellungen (Zahnrad) lassen sich Fensterplatz, Modelle, Anbieter, Sprachen und das
-  Phrasengedächtnis einrichten.
+- In den Einstellungen (Zahnrad) lassen sich Sprachen, lokale Modelle, Anbieter, Fensterplatz und das
+  Phrasengedächtnis einrichten. Unter jeder Modellgröße führt ein Knopf zu einer Seite, auf der es ein
+  passendes Modell zum Herunterladen gibt.
 - Einstellungen, eigene Phrasen und der Verlauf liegen unter `%APPDATA%\TuringTranslate\`.
 
 ## Anbieter
@@ -133,6 +136,7 @@ Embeddable-Python von python.org zusammen, prüft, dass der Sidecar damit starte
 | Claude (Abo) | Claude Code, angemeldet | getestet |
 | Claude (API-Schlüssel) | Schlüssel oder `ANTHROPIC_API_KEY` | umgesetzt, noch nicht mit echtem Schlüssel geprüft |
 | OpenAI-kompatibel | Schlüssel oder `OPENAI_API_KEY`; die Adresse ist einstellbar, damit gehen auch andere Dienste und lokale Server | umgesetzt, noch nicht mit echtem Schlüssel geprüft |
+| OpenRouter | Schlüssel oder `OPENROUTER_API_KEY`; Modellliste mit Suche, Preisen und Filter „nur kostenlose“, Kosten je Modell | umgesetzt, Modellliste live geprüft, Übersetzen noch nicht mit echtem Schlüssel geprüft |
 | ChatGPT (Abo) | Codex-CLI, angemeldet | umgesetzt, noch nicht mit echtem Abo geprüft |
 
 Schlüssel liegen nur in `%APPDATA%\TuringTranslate\config.json` oder in einer Umgebungsvariable.

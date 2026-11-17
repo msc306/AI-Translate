@@ -1,7 +1,9 @@
 """Cheap plausibility checks on a finished translation (no model call)."""
 import languages
+from i18n import tr
 from phrases import normalize
 
+# German source texts; warnings() translates them when they are used.
 MESSAGES = {
     "empty": "Die Übersetzung ist leer.",
     "untranslated": "Der Text wurde offenbar nicht übersetzt.",
@@ -50,4 +52,4 @@ def check(source_text: str, output: str, source: str, target: str) -> list[str]:
 
 
 def warnings(codes: list[str]) -> list[dict]:
-    return [{"code": code, "message": MESSAGES.get(code, code)} for code in codes]
+    return [{"code": code, "message": tr(MESSAGES[code]) if code in MESSAGES else code} for code in codes]

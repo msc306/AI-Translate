@@ -3,8 +3,10 @@
 Options:  --vector   also test the ChromaDB index (downloads the embedding model on first run)
           --claude   also translate one sentence through the Claude subscription (needs a login)
 """
+import ast
 import csv
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -17,9 +19,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.stdout.reconfigure(encoding="utf-8")
 
 import checks
+import downloads
 import history
+import i18n
 import languages
 import main as sidecar_main
+import ocr
 import phrases
 import prompting
 import providers
@@ -43,6 +48,8 @@ def test_languages():
         "es": "No puedo ir esta noche porque tenemos mucho trabajo que hacer.",
         "it": "Non posso venire questa sera perché abbiamo molto lavoro.",
         "nl": "Ik kan vanavond niet komen omdat we nog veel werk hebben.",
+        "lt": "Aš šiandien negaliu ateiti, nes mes dar turime daug darbo ir jau vėlu.",
+        "lv": "Es šovakar nevaru atnākt, jo mums vēl ir ļoti daudz darba un jau ir vēls.",
         "ru": "Я не могу прийти сегодня вечером, потому что у нас много работы.",
         "ja": "今日は仕事がたくさんあるので行けません。",
         "zh": "我今天晚上不能来，因为我们有很多工作。",
@@ -274,6 +281,74 @@ def test_json_answers():
                messages[0]["content"][:120])
 
 
+def test_openrouter():
+    import providers
+    rows = providers.parse_openrouter_models({"data": [
+        {"id": "x/paid", "name": "Paid", "pricing": {"prompt": "0.000003", "completion": "0.000015"},
+         "context_length": 200000},
+        {"id": "x/free:free", "name": "Free", "pricing": {"prompt": "0", "completion": "0"}},
+        {"id": "x/odd", "pricing": {"prompt": "-1", "completion": "x"}},
+        {"name": "no id"},
+    ]})
+    by_id = {r["id"]: r for r in rows}
+    expect("openrouter rows parsed", sorted(by_id) == ["x/free:free", "x/odd", "x/paid"], str(sorted(by_id)))
+    expect("price per million tokens", by_id["x/paid"]["price_in"] == 3.0 and by_id["x/paid"]["price_out"] == 15.0)
+    expect("free model flagged", by_id["x/free:free"]["free"] and not by_id["x/paid"]["free"])
+    expect("unknown price stays unknown", by_id["x/odd"]["price_in"] is None and not by_id["x/odd"]["free"])
+    expect("remembered price", providers.openrouter_price("x/paid") == (3.0, 15.0))
+
+    def fake_sse(url, headers, body, cancel, name):
+        expect("openrouter address", url == "https://openrouter.ai/api/v1/chat/completions", url)
+        expect("openrouter asks for usage", body.get("usage") == {"include": True})
+        yield {"choices": [{"delta": {"content": "Hallo"}}]}
+        yield {"choices": [], "usage": {"prompt_tokens": 1000, "completion_tokens": 100}}
+
+    original = providers._sse
+    providers._sse = fake_sse
+    try:
+        usage = providers.new_usage()
+        cfg = {"key": "sk-or-test", "model": "x/paid"}
+        text = "".join(providers.openrouter([], cfg, threading.Event(), usage))
+        expect("openrouter streams text", text == "Hallo")
+        expect("cost from the price list", usage["cost_known"] and abs(usage["cost_usd"] - 0.0045) < 1e-9,
+               str(usage))
+
+        def sse_with_cost(url, headers, body, cancel, name):
+            yield {"choices": [], "usage": {"prompt_tokens": 10, "completion_tokens": 5, "cost": 0.25}}
+        providers._sse = sse_with_cost
+        usage = providers.new_usage()
+        list(providers.openrouter([], cfg, threading.Event(), usage))
+        expect("cost reported by openrouter wins", usage["cost_usd"] == 0.25)
+    finally:
+        providers._sse = original
+
+    reasons = {e["id"]: e["reason"] for e in providers.availability({"openrouter": {"enabled": True}})}
+    expect("openrouter needs a key", reasons.get("openrouter") == "API-Schlüssel fehlt", str(reasons.get("openrouter")))
+    reasons = {e["id"]: e["reason"] for e in providers.availability({"openrouter": {"enabled": True, "key": "k"}})}
+    expect("openrouter needs a model", reasons.get("openrouter") == "Modell fehlt", str(reasons.get("openrouter")))
+
+
+def test_word_list():
+    import textutil
+    expect("single word is a list", textutil.word_list("Bank") == ["Bank"])
+    expect("lines are a list", textutil.word_list("- Bank\n- Schloss\n\n3. Leiter") == ["Bank", "Schloss", "Leiter"])
+    expect("comma list", textutil.word_list("Bank, Schloss; Kiefer") == ["Bank", "Schloss", "Kiefer"])
+    expect("short expression counts", textutil.word_list("auf jeden Fall") == ["auf jeden Fall"])
+    expect("sentence is not a list", textutil.word_list("Ich gehe heute zur Bank.") is None)
+    expect("short sentence with full stop is not a list", textutil.word_list("Komm her.") is None)
+    expect("long list is not a word list", textutil.word_list("\n".join(f"Wort{i}" for i in range(20))) is None)
+    expect("numbers alone are not words", textutil.word_list("42") is None)
+    expect("duplicates removed", textutil.word_list("Bank\nBank") == ["Bank"])
+    rows = sidecar_main.clean_senses({"words": [{"word": "bank", "senses": [{"translation": "x"}] * 6}]}, ["Bank"])
+    expect("senses matched by name, capped at 4", rows and rows[0]["word"] == "Bank" and len(rows[0]["senses"]) == 4)
+    broken = ('{"words": [{"word": "Schloss", "senses": [{"translation": "castle"}]}], '
+              '[{"word": "Leiter", "senses": [{"translation": "ladder"}]}]}')
+    rows = sidecar_main.clean_senses(sidecar_main.word_objects(broken), ["Schloss", "Leiter"])
+    expect("word objects recovered from broken list", [r["word"] for r in rows] == ["Schloss", "Leiter"], str(rows))
+    expect("broken senses answer gives nothing", sidecar_main.clean_senses({"words": "x"}, ["Bank"]) == []
+           and sidecar_main.clean_senses(None, ["Bank"]) == [])
+
+
 def run_fake(side, request, answers, method="translate"):
     """Run one request against scripted model answers; return (events, prompts seen by the model)."""
     events, prompts = [], []
@@ -341,6 +416,26 @@ def test_modes():
         expect("review cannot swap in an untranslated text", last(events)["review"]["changed"] == 0)
         events, _ = run_fake(side, {"text": text, "thorough": True}, [fixed, "not json"])
         expect("unusable review keeps the draft", last(events)["event"] == "done" and last(events)["review"]["changed"] == 0)
+
+        # single words: meanings with examples
+        senses = json.dumps({"words": [{"word": "Bank", "senses": [
+            {"translation": "bank", "meaning": "Geldinstitut", "example": "Ich gehe zur Bank.",
+             "example_translation": "I am going to the bank."},
+            {"translation": "bench", "meaning": "Sitzbank", "example": "Wir sitzen auf der Bank.",
+             "example_translation": "We are sitting on the bench."}, {"meaning": "no translation"}]}]})
+        events, prompts = run_fake(side, {"text": "Bank", "source": "de", "target": "en"}, ["bank", senses])
+        done = last(events)
+        expect("single word gets meanings", done["event"] == "done" and len(prompts) == 2
+               and [s["translation"] for s in done.get("senses", [{}])[0].get("senses", [])] == ["bank", "bench"],
+               str(done))
+        expect("meanings prompt lists the word as material", "<words>\nBank\n</words>" in prompts[1][1]["content"])
+        events, prompts = run_fake(side, {"text": "Bank", "source": "de", "target": "en"}, ["bank", "nonsense"])
+        expect("unusable meanings keep the translation", last(events)["event"] == "done"
+               and "senses" not in last(events))
+        events, prompts = run_fake(side, {"text": "Bank", "source": "de", "target": "en", "senses": False}, ["bank"])
+        expect("meanings can be switched off", len(prompts) == 1 and "senses" not in last(events))
+        events, prompts = run_fake(side, {"text": text}, [fixed])
+        expect("a sentence gets no meanings step", len(prompts) == 1)
 
         # history switch per request (used by the MCP server)
         before = len(side.history.items())
@@ -575,21 +670,133 @@ def test_ocr():
            and events[0]["event"] == "error" and events[0]["code"].startswith("ocr_"), str(events))
 
 
+def _placeholders(text):
+    return sorted(set(re.findall(r"\{(\w*)\}", text)))
+
+
+def test_i18n_catalog():
+    for source, entry in i18n.CATALOG.items():
+        missing = [code for code in ("en", "es", "fr") if not str(entry.get(code) or "").strip()]
+        expect(f"catalog entry is complete: {source[:40]}", not missing, f"missing {missing}")
+        wrong = [code for code in ("en", "es", "fr") if code in entry
+                 and _placeholders(entry[code]) != _placeholders(source)]
+        expect(f"catalog placeholders match: {source[:40]}", not wrong, f"differs in {wrong}")
+
+    # Every German text the code passes to tr(), directly or from a module-level table, has an entry.
+    sources = set(checks.MESSAGES.values()) | set(ocr.MESSAGES.values()) | set(providers.LABELS.values())
+    sources |= {value[0] for value in prompting.STYLES.values()}
+    sources |= {entry["label"] for entry in downloads.CATALOG.values()}
+    sources |= {value[1] for value in languages.CATALOG.values()}
+    calls = 0
+    for path in sorted((APP_DIR / "sidecar").glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if (isinstance(node, ast.Call) and getattr(node.func, "id", getattr(node.func, "attr", "")) == "tr"
+                    and node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str)):
+                calls += 1
+                sources.add(node.args[0].value)
+                given = sorted(k.arg for k in node.keywords if k.arg)
+                expect(f"tr() call fills its placeholders: {path.name}:{node.lineno}",
+                       given == _placeholders(node.args[0].value), f"{given}")
+        for reason in re.findall(r'reason = "([^"]+)"', path.read_text(encoding="utf-8")):
+            sources.add(reason)
+    unknown = sorted(s for s in sources if s not in i18n.CATALOG)
+    expect("every text passed to tr() is in the catalog", calls > 50 and not unknown, f"{calls} calls, {unknown}")
+
+
+def test_i18n_switch():
+    expect("tests start in German", i18n.get_language() == "de")
+    expect("german is the source text", i18n.tr("Unbekannter Befehl: {cmd}", cmd="x") == "Unbekannter Befehl: x")
+    expect("text without an entry stays as it is", i18n.tr("Kein Eintrag {n}", n=3) == "Kein Eintrag 3")
+
+    def engine_error():
+        try:
+            list(providers.stream("nope", [], {}, threading.Event(), {}))
+        except sidecar_main.EngineError as err:
+            return str(err)
+        return ""
+
+    def style_label():
+        return i18n.tr(prompting.STYLES["formal"][0])
+
+    def engine_label():
+        return providers.availability({})[1]["label"]
+
+    german = (engine_error(), style_label(), engine_label(), checks.warnings(["empty"])[0]["message"],
+              str(ocr.OcrError("no_text")))
+    expect("german error message", german[0] == "Unbekannter Anbieter: nope", german[0])
+    expect("german labels", german[1] == "Förmlich" and german[2] == "Claude (API-Schlüssel)", str(german[1:3]))
+    try:
+        seen = {"de": german}
+        for code, error, style, engine in (("en", "Unknown provider: nope", "Formal", "Claude (API key)"),
+                                           ("es", "Proveedor desconocido: nope", "Formal", "Claude (clave de API)"),
+                                           ("fr", "Fournisseur inconnu : nope", "Soutenu", "Claude (clé API)")):
+            expect(f"set_language returns the code {code}", i18n.set_language(code) == code)
+            got = (engine_error(), style_label(), engine_label(), checks.warnings(["empty"])[0]["message"],
+                   str(ocr.OcrError("no_text")))
+            seen[code] = got
+            expect(f"error message in {code}", got[0] == error, got[0])
+            expect(f"style and engine label in {code}", got[1:3] == (style, engine), str(got[1:3]))
+            expect(f"check warning and ocr message follow the language {code}",
+                   got[3] != german[3] and got[4] != german[4], str(got[3:]))
+            reasons = {e["id"]: e["reason"] for e in providers.availability({})}
+            expect(f"engine reason in {code}", reasons["claude_api"] not in ("", "API-Schlüssel fehlt"),
+                   reasons["claude_api"])
+            label = downloads.Downloader(Path(tempfile.gettempdir()) / "tt-no-such-dir", lambda m: None).state()
+            expect(f"download label in {code}", "Laufzeit" not in json.dumps(label, ensure_ascii=False)
+                   and downloads.LLAMA_TAG in json.dumps(label, ensure_ascii=False))
+            expect(f"prompts name the answer language {code}",
+                   i18n.language_name() in prompting.explain_messages("a", "b", "de", "en")[0]["content"]
+                   and "German-speaking" not in prompting.explain_messages("a", "b", "de", "en")[0]["content"])
+        expect("the four languages differ", len({seen[c][3] for c in seen}) == 4)
+
+        expect("unknown language falls back to german", i18n.set_language("xx") == "de"
+               and engine_error() == german[0])
+        expect("empty and odd values fall back to german", i18n.set_language(None) == "de"
+               and i18n.set_language(7) == "de" and i18n.normalize(["en"]) == "de")
+        expect("region and case are ignored", i18n.set_language("EN-us") == "en" and i18n.set_language("fr_FR") == "fr")
+    finally:
+        i18n.set_language("de")
+    expect("german prompts are unchanged", "to a German-speaking user" in
+           prompting.explain_messages("a", "b", "de", "en")[0]["content"])
+
+    with tempfile.TemporaryDirectory() as work:
+        config = Path(work) / "config.json"
+        config.write_text(json.dumps({"memory": {"vector": False}}), encoding="utf-8")
+        try:
+            side = sidecar_main.Sidecar(APP_DIR, config)
+            expect("ui_language defaults to german", side.config()["ui_language"] == "de"
+                   and side.status()["config"]["ui_language"] == "de")
+            saved = side.save_config({"ui_language": "es"})
+            status = side.status()
+            expect("set_config switches the language", saved["ui_language"] == "es" and i18n.get_language() == "es"
+                   and side.public_config()["ui_language"] == "es" and status["config"]["ui_language"] == "es")
+            expect("status follows the language",
+                   {s["id"]: s["label"] for s in status["styles"]}["literal"] == "Literal"
+                   and status["engines"][0]["label"] == "Local (GPU)", str(status["styles"]))
+            labels = {c["code"]: c["label"] for c in status["languages"]["catalog"]}
+            expect("language labels follow the language", labels["en"] == "Inglés" and labels["de"] == "Alemán"
+                   and languages.name("en") == "English", str(labels))
+            side.save_config({"ui_language": "klingon"})
+            expect("unknown ui_language falls back to german", side.config()["ui_language"] == "de"
+                   and i18n.get_language() == "de")
+            side.save_config({"ui_language": "fr"})
+            i18n.set_language("de")
+            sidecar_main.Sidecar(APP_DIR, config)
+            expect("stored language is applied on start", i18n.get_language() == "fr")
+        finally:
+            i18n.set_language("de")
+
+
 if __name__ == "__main__":
-    test_ocr()
-    test_downloads()
-    test_languages()
-    test_checks()
-    test_phrases()
-    test_prompting()
-    test_config_and_direction()
-    test_history_and_export()
-    test_json_answers()
-    test_modes()
-    test_mcp()
+    tests = [test_ocr, test_downloads, test_languages, test_word_list, test_checks, test_phrases,
+             test_prompting, test_config_and_direction, test_history_and_export, test_json_answers, test_modes,
+             test_mcp, test_openrouter, test_i18n_catalog, test_i18n_switch]
     if "--vector" in sys.argv:
-        test_vector()
+        tests.append(test_vector)
     if "--claude" in sys.argv:
-        test_claude_subscription()
+        tests.append(test_claude_subscription)
+    for test in tests:
+        i18n.set_language("de")  # the tests assert German texts
+        test()
     print(f"\n{len(failures)} failed" if failures else "\nall passed")
     sys.exit(1 if failures else 0)

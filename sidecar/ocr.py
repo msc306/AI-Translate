@@ -13,9 +13,12 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from i18n import tr
+
 NO_WINDOW = 0x08000000  # CREATE_NO_WINDOW
 TIMEOUT_SECONDS = 40
 
+# German source texts; OcrError translates them when it is raised.
 MESSAGES = {
     "unsupported": "Die Texterkennung aus Bildern gibt es nur unter Windows.",
     "no_image": "In der Zwischenablage liegt weder Text noch ein Bild.",
@@ -29,7 +32,7 @@ MESSAGES = {
 
 class OcrError(Exception):
     def __init__(self, code: str, detail: str = ""):
-        message = MESSAGES.get(code, MESSAGES["failed"])
+        message = tr(MESSAGES.get(code, MESSAGES["failed"]))
         super().__init__(f"{message} ({detail})" if detail and code == "failed" else message)
         self.code = code
 

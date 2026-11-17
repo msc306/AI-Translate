@@ -14,15 +14,19 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+from i18n import tr
+
 LLAMA_TAG = "b12360"
 _LLAMA = f"https://github.com/ggml-org/llama.cpp/releases/download/{LLAMA_TAG}/"
 _GEMMA = ("https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/"
           "eed445ccfb8aef2e279df1a97e133baf06e443b4/")
 
+# "label" is the German source text; state() translates it, filling in "label_values".
 CATALOG = {
     "runtime": {
         "kind": "runtime",
-        "label": f"llama.cpp-Laufzeit für NVIDIA-Grafikkarten ({LLAMA_TAG})",
+        "label": "llama.cpp-Laufzeit für NVIDIA-Grafikkarten ({tag})",
+        "label_values": {"tag": LLAMA_TAG},
         "size_mb": 677,
         "files": [
             {
@@ -99,7 +103,7 @@ class Downloader:
             {
                 "item": name,
                 "kind": entry["kind"],
-                "label": entry["label"],
+                "label": tr(entry["label"], **entry.get("label_values", {})),
                 "size_mb": entry["size_mb"],
                 "installed": self.target(name).is_file(),
                 "running": name in running,
@@ -111,7 +115,7 @@ class Downloader:
 
     def start(self, item: str, req_id=None) -> None:
         if item not in self.catalog:
-            raise DownloadError(f"Unbekannter Download: {item}")
+            raise DownloadError(tr("Unbekannter Download: {item}", item=item))
         with self.lock:
             job = self.jobs.get(item)
             if job and job[0].is_alive():
@@ -142,7 +146,7 @@ class Downloader:
         entry = self.catalog[item]
         try:
             if self.target(item).is_file():
-                self._report(item, req_id, "done", message="Bereits vorhanden.")
+                self._report(item, req_id, "done", message=tr("Bereits vorhanden."))
                 return
             work = self.data_dir / "downloads"
             work.mkdir(parents=True, exist_ok=True)
@@ -157,7 +161,8 @@ class Downloader:
                 self._report(item, req_id, "verifying", done_mb=before_mb + spec["size_mb"], total_mb=total_mb)
                 if _sha256(part, cancel) != spec["sha256"]:
                     part.unlink(missing_ok=True)
-                    raise DownloadError(f"Die Prüfsumme von {spec['name']} stimmt nicht. Die Datei wurde verworfen.")
+                    raise DownloadError(tr("Die Prüfsumme von {name} stimmt nicht. Die Datei wurde verworfen.",
+                                           name=spec["name"]))
                 parts.append(part)
                 before_mb += spec["size_mb"]
 
@@ -173,11 +178,11 @@ class Downloader:
             self._report(item, req_id, "done", done_mb=total_mb, total_mb=total_mb)
         except Cancelled:
             self._report(item, req_id, "cancelled",
-                         message="Abgebrochen. Der bereits geladene Teil bleibt für die Fortsetzung erhalten.")
+                         message=tr("Abgebrochen. Der bereits geladene Teil bleibt für die Fortsetzung erhalten."))
         except DownloadError as err:
             self._report(item, req_id, "error", message=str(err))
         except (OSError, zipfile.BadZipFile) as err:
-            self._report(item, req_id, "error", message=f"Download fehlgeschlagen: {err}")
+            self._report(item, req_id, "error", message=tr("Download fehlgeschlagen: {error}", error=err))
 
     def _check_space(self, entry: dict, work: Path) -> None:
         have_mb = sum((work / (f["name"] + ".part")).stat().st_size // 2**20
@@ -186,12 +191,13 @@ class Downloader:
         need_mb = int(entry["size_mb"] * factor) - have_mb + 200
         free_mb = shutil.disk_usage(work).free // 2**20
         if free_mb < need_mb:
-            raise DownloadError(f"Zu wenig Speicherplatz: {need_mb} MB nötig, {free_mb} MB frei ({work.anchor}).")
+            raise DownloadError(tr("Zu wenig Speicherplatz: {need} MB nötig, {free} MB frei ({drive}).",
+                                   need=need_mb, free=free_mb, drive=work.anchor))
 
     def _fetch(self, item, req_id, spec, part: Path, cancel, before_mb: int, total_mb: int) -> None:
         url = spec["url"]
         if not (url.lower().startswith("https://") or self.allow_http):
-            raise DownloadError("Downloads laufen nur über https://.")
+            raise DownloadError(tr("Downloads laufen nur über https://."))
         if CURL.is_file():
             self._fetch_curl(item, req_id, spec, part, cancel, before_mb, total_mb)
         else:
@@ -217,8 +223,9 @@ class Downloader:
                 part.unlink(missing_ok=True)
                 continue
             if code == STALLED:
-                error = "Der Server sendet keine Daten mehr."
-            raise DownloadError(f"Download von {spec['name']} fehlgeschlagen: {error or f'curl {code}'}")
+                error = tr("Der Server sendet keine Daten mehr.")
+            raise DownloadError(tr("Download von {name} fehlgeschlagen: {error}",
+                                   name=spec["name"], error=error or f"curl {code}"))
 
     def _run_curl(self, item, req_id, spec, part: Path, cancel, before_mb: int, total_mb: int) -> tuple[int, str]:
         protocols = "=http,https" if self.allow_http else "=https"
@@ -266,7 +273,7 @@ class Downloader:
             try:
                 with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=30) as resp:
                     if not (resp.geturl().lower().startswith("https://") or self.allow_http):
-                        raise DownloadError("Der Server leitet auf eine unsichere Adresse um.")
+                        raise DownloadError(tr("Der Server leitet auf eine unsichere Adresse um."))
                     resumed = resp.status == 206
                     if have and not resumed:
                         have = 0  # the server sent the whole file again
@@ -287,7 +294,7 @@ class Downloader:
                                              done_mb=before_mb + have // 2**20, total_mb=total_mb)
                     length = resp.headers.get("Content-Length")
                     if length is not None and not resumed and have < int(length):
-                        raise OSError("Verbindung vorzeitig beendet")
+                        raise OSError(tr("Verbindung vorzeitig beendet"))
                 return
             except urllib.error.HTTPError as err:
                 if err.code == 416:  # the .part file is already complete (or too long): let the checksum decide
@@ -299,7 +306,7 @@ class Downloader:
                 last_error = err
             if cancel.wait(min(2 * (attempt + 1), 10)):
                 raise Cancelled()
-        raise DownloadError(f"Download von {spec['name']} fehlgeschlagen: {last_error}")
+        raise DownloadError(tr("Download von {name} fehlgeschlagen: {error}", name=spec["name"], error=last_error))
 
 
 def _sha256(path: Path, cancel: threading.Event | None = None) -> str:
@@ -342,7 +349,7 @@ def _install_runtime(archives: list[Path], target: Path) -> None:
                     with bundle.open(name) as source, open(destination, "wb") as out:
                         shutil.copyfileobj(source, out, CHUNK)
         if not (staging / "llama-server.exe").is_file():
-            raise DownloadError("Im Archiv fehlt llama-server.exe.")
+            raise DownloadError(tr("Im Archiv fehlt llama-server.exe."))
         shutil.rmtree(target, ignore_errors=True)
         staging.replace(target)
     except Exception:

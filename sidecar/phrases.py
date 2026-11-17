@@ -5,6 +5,8 @@ import uuid
 import zipfile
 from pathlib import Path
 
+from i18n import tr
+
 _PUNCT = re.compile(r"[^\w\s']", re.UNICODE)
 _SPACE = re.compile(r"\s+")
 _PACK_ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")
@@ -83,12 +85,12 @@ def install_pack(source: Path, target_dir: Path) -> str:
                 name = Path(item.filename).name
                 if name in ("manifest.json", "phrases.json") and not item.is_dir():
                     if item.file_size > MAX_PACK_BYTES:
-                        raise PackError("Das Sprachpaket ist zu groß.")
+                        raise PackError(tr("Das Sprachpaket ist zu groß."))
                     files[name] = archive.read(item)
     else:
-        raise PackError("Kein Sprachpaket: erwartet wird eine .zip-Datei oder ein Ordner mit manifest.json.")
+        raise PackError(tr("Kein Sprachpaket: erwartet wird eine .zip-Datei oder ein Ordner mit manifest.json."))
     if "manifest.json" not in files:
-        raise PackError("Im Sprachpaket fehlt die Datei manifest.json.")
+        raise PackError(tr("Im Sprachpaket fehlt die Datei manifest.json."))
     try:
         manifest = json.loads(files["manifest.json"].decode("utf-8"))
         pack_id = str(manifest["id"])
@@ -96,9 +98,9 @@ def install_pack(source: Path, target_dir: Path) -> str:
         if "phrases.json" in files:
             json.loads(files["phrases.json"].decode("utf-8"))["phrases"]
     except (ValueError, KeyError, TypeError):
-        raise PackError("Das Sprachpaket ist beschädigt (manifest.json oder phrases.json ungültig).")
+        raise PackError(tr("Das Sprachpaket ist beschädigt (manifest.json oder phrases.json ungültig)."))
     if not _PACK_ID.match(pack_id) or len(codes) < 2:
-        raise PackError("Das Sprachpaket hat keine gültige Kennung oder weniger als zwei Sprachen.")
+        raise PackError(tr("Das Sprachpaket hat keine gültige Kennung oder weniger als zwei Sprachen."))
     folder = target_dir / pack_id
     folder.mkdir(parents=True, exist_ok=True)
     for name, content in files.items():
@@ -227,7 +229,7 @@ class PhraseBook:
         new_source = _variants(source_text)
         new_target = _variants(target_text)
         if not new_source or not new_target or source == target:
-            raise ValueError("Ausgangs- und Zieltext dürfen nicht leer sein.")
+            raise ValueError(tr("Ausgangs- und Zieltext dürfen nicht leer sein."))
         existing = next((e for e in self.user_entries if e["id"] == entry_id), None)
         if existing is None and not entry_id:
             # Same source phrase saved again (a correction): update instead of duplicating.
@@ -263,11 +265,12 @@ class PhraseBook:
         self._build()
         return True
 
-    def export_pack(self, path: Path, name: str = "Eigene Phrasen") -> int:
+    def export_pack(self, path: Path, name: str = "") -> int:
         """Write the user's own entries as a language pack (zip) that others can install."""
+        name = name or tr("Eigene Phrasen")
         entries = [e["texts"] for e in self.user_entries if len(e.get("texts") or {}) >= 2]
         if not entries:
-            raise ValueError("Es gibt noch keine eigenen Einträge.")
+            raise ValueError(tr("Es gibt noch keine eigenen Einträge."))
         codes = sorted({code for texts in entries for code in texts})
         pack_id = re.sub(r"[^a-z0-9-]", "-", path.stem.lower()).strip("-")[:40]
         if len(pack_id) < 2 or not pack_id[0].isalnum():

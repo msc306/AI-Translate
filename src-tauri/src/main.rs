@@ -23,6 +23,32 @@ struct AppState {
     registered: Mutex<bool>,
     sidecar: sidecar::Sidecar,
     hotkeys: Mutex<(Option<Shortcut>, Option<Shortcut>)>,
+    /// interface language: de, en, es or fr
+    ui_lang: Mutex<String>,
+    /// tray menu entries (toggle, dock, quit), kept to rename them with the language
+    tray_items: Mutex<Vec<MenuItem<tauri::Wry>>>,
+}
+
+/// Texts of the window shell in German, English, Spanish and French.
+fn text(lang: &str, key: &str) -> &'static str {
+    let row: [&'static str; 4] = match key {
+        "toggle" => ["Anzeigen / Verbergen", "Show / Hide", "Mostrar / Ocultar", "Afficher / Masquer"],
+        "dock" => ["Andocken / Lösen", "Dock / Undock", "Acoplar / Soltar", "Ancrer / Détacher"],
+        "quit" => ["Beenden", "Quit", "Salir", "Quitter"],
+        "pick_model" => ["Modelldatei auswählen", "Choose a model file", "Elegir archivo de modelo", "Choisir un fichier de modèle"],
+        "models" => ["GGUF-Modelle", "GGUF models", "Modelos GGUF", "Modèles GGUF"],
+        "pick_pack" => ["Sprachpaket auswählen", "Choose a language pack", "Elegir paquete de idioma", "Choisir un pack de langue"],
+        "packs" => ["Sprachpakete", "Language packs", "Paquetes de idioma", "Packs de langue"],
+        "csv" => ["CSV-Tabelle", "CSV table", "Tabla CSV", "Tableau CSV"],
+        "pack" => ["Sprachpaket", "Language pack", "Paquete de idioma", "Pack de langue"],
+        "save_as" => ["Speichern unter", "Save as", "Guardar como", "Enregistrer sous"],
+        _ => [""; 4],
+    };
+    row[match lang { "en" => 1, "es" => 2, "fr" => 3, _ => 0 }]
+}
+
+fn ui_lang(app: &AppHandle) -> String {
+    app.state::<AppState>().ui_lang.lock().unwrap().clone()
 }
 
 fn apply_current(app: &AppHandle) {
@@ -114,10 +140,11 @@ fn register_hotkeys(app: &AppHandle) {
 /// Async so the blocking dialog never runs on the main thread.
 #[tauri::command]
 async fn pick_file(app: AppHandle, kind: String) -> Option<String> {
+    let lang = ui_lang(&app);
     let dialog = app.dialog().file();
     let dialog = match kind.as_str() {
-        "model" => dialog.set_title("Modelldatei auswählen").add_filter("GGUF-Modelle", &["gguf"]),
-        "pack" => dialog.set_title("Sprachpaket auswählen").add_filter("Sprachpakete", &["zip", "json"]),
+        "model" => dialog.set_title(text(&lang, "pick_model")).add_filter(text(&lang, "models"), &["gguf"]),
+        "pack" => dialog.set_title(text(&lang, "pick_pack")).add_filter(text(&lang, "packs"), &["zip", "json"]),
         _ => dialog,
     };
     let path = dialog.blocking_pick_file()?.into_path().ok()?;
@@ -127,15 +154,16 @@ async fn pick_file(app: AppHandle, kind: String) -> Option<String> {
 /// Ask where to save an export; the sidecar writes the file.
 #[tauri::command]
 async fn pick_save(app: AppHandle, kind: String, name: String) -> Option<String> {
+    let lang = ui_lang(&app);
     let dialog = app.dialog().file().set_file_name(name);
     let dialog = match kind.as_str() {
-        "csv" => dialog.add_filter("CSV-Tabelle", &["csv"]),
+        "csv" => dialog.add_filter(text(&lang, "csv"), &["csv"]),
         "json" => dialog.add_filter("JSON", &["json"]),
         "md" => dialog.add_filter("Markdown", &["md"]),
-        "pack" => dialog.add_filter("Sprachpaket", &["zip"]),
+        "pack" => dialog.add_filter(text(&lang, "pack"), &["zip"]),
         _ => dialog,
     };
-    let path = dialog.set_title("Speichern unter").blocking_save_file()?.into_path().ok()?;
+    let path = dialog.set_title(text(&lang, "save_as")).blocking_save_file()?.into_path().ok()?;
     Some(path.to_string_lossy().into_owned())
 }
 
@@ -229,6 +257,32 @@ fn write_clipboard(app: AppHandle, text: String) -> Result<(), String> {
     app.clipboard().write_text(text).map_err(|e| e.to_string())
 }
 
+/// Open a web page in the default browser. Only https addresses are passed on.
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") || url.chars().any(|c| c.is_control() || c == '"') {
+        return Err("only https addresses can be opened".into());
+    }
+    std::process::Command::new("rundll32")
+        .args(["url.dll,FileProtocolHandler", &url])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// Switch the texts of the tray menu and the file dialogs.
+#[tauri::command]
+fn set_ui_language(state: State<AppState>, lang: String) {
+    let lang = match lang.as_str() {
+        "en" | "es" | "fr" => lang,
+        _ => "de".to_string(),
+    };
+    for (item, key) in state.tray_items.lock().unwrap().iter().zip(["toggle", "dock", "quit"]) {
+        let _ = item.set_text(text(&lang, key));
+    }
+    *state.ui_lang.lock().unwrap() = lang;
+}
+
 fn main() {
     let (initial, first_run) = Layout::load();
 
@@ -261,6 +315,8 @@ fn main() {
             registered: Mutex::new(false),
             sidecar: sidecar::Sidecar::default(),
             hotkeys: Mutex::new((None, None)),
+            ui_lang: Mutex::new("de".into()),
+            tray_items: Mutex::new(Vec::new()),
         })
         .invoke_handler(tauri::generate_handler![
             sidecar_send,
@@ -276,7 +332,9 @@ fn main() {
             read_clipboard,
             write_clipboard,
             pick_file,
-            pick_save
+            pick_save,
+            open_url,
+            set_ui_language
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -295,6 +353,8 @@ fn main() {
             let dock_item = MenuItem::with_id(app, "dock", "Andocken / Lösen", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Beenden", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_item, &dock_item, &quit_item])?;
+            *app.state::<AppState>().tray_items.lock().unwrap() =
+                vec![show_item.clone(), dock_item.clone(), quit_item.clone()];
             let mut tray = TrayIconBuilder::with_id("main")
                 .tooltip("Turing Translate")
                 .menu(&menu)

@@ -26,30 +26,27 @@ const state = {
   downloads: {},
 };
 
-const DOWNLOAD_STATES = {
-  running: "lädt",
-  verifying: "prüft die Datei",
-  extracting: "entpackt",
-  done: "fertig",
-  cancelled: "abgebrochen",
-  error: "Fehler",
-};
+const DOWNLOAD_STATES = ["running", "verifying", "extracting", "done", "cancelled", "error"];
+const STAGE_NAMES = ["start", "vram_check", "loading", "translating", "retry", "unloading", "clarify", "review",
+  "explaining", "ocr", "senses"];
+const SIZES = ["small", "medium", "large"];
+const PROVIDERS = ["claude_sub", "claude_api", "chatgpt_sub", "openai_api", "openrouter"];
+const OPENROUTER_KEYS_URL = "https://openrouter.ai/keys";
+const MATCHES = ["whole", "exact", "similar"];
 
-const STAGES = {
-  start: "Starte …",
-  vram_check: "Prüfe freien Grafikspeicher …",
-  loading: "Lade Modell …",
-  translating: "Übersetze …",
-  retry: "Ergebnis auffällig – versuche es noch einmal …",
-  unloading: "Gebe Grafikspeicher frei …",
-  clarify: "Prüfe, ob der Text eindeutig ist …",
-  review: "Prüfe die Übersetzung noch einmal …",
-  explaining: "Erkläre die Übersetzung …",
-  ocr: "Lese den Text aus dem Bild …",
+// Where a model of each size can be downloaded; opened in the browser from the settings.
+const MODEL_LINKS = {
+  small: { name: "Gemma 4 E2B", url: "https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF" },
+  medium: { name: "Gemma 3 12B", url: "https://huggingface.co/lmstudio-community/gemma-3-12b-it-GGUF" },
+  large: { name: "Gemma 3 27B", url: "https://huggingface.co/lmstudio-community/gemma-3-27b-it-GGUF" },
 };
-const SIZE_LABELS = { small: "Klein", medium: "Mittel", large: "Groß" };
-const PROVIDERS = ["claude_sub", "claude_api", "chatgpt_sub", "openai_api"];
-const MATCH_LABELS = { whole: "ganzer Text", exact: "fester Eintrag", similar: "ähnlich" };
+const PACK_EXAMPLE_URL = "https://raw.githubusercontent.com/msc306/AI-Translate/main/packs/de-en/manifest.json";
+const PACK_SOURCE_URL = "https://github.com/msc306/AI-Translate/tree/main/packs";
+
+/** Status text of a stage the sidecar reports; an unknown stage shows its name. */
+function stageText(stage) {
+  return STAGE_NAMES.includes(stage) ? t("stage_" + stage) : stage;
+}
 
 function send(message) {
   const id = state.nextId++;
@@ -81,7 +78,7 @@ function el(tag, props = {}, ...children) {
 }
 
 function languageLabel(code) {
-  return state.info?.languages.catalog.find((l) => l.code === code)?.label || code.toUpperCase();
+  return languageName(code, state.info?.languages.catalog.find((l) => l.code === code)?.label);
 }
 
 function showView(name) {
@@ -107,6 +104,7 @@ function clearResult() {
   $("used").hidden = true;
   $("question").hidden = true;
   $("explain").hidden = true;
+  $("senses").hidden = true;
   state.explainId = null;
 }
 
@@ -120,7 +118,7 @@ function translate(extra = {}) {
   }
   const engine = $("engine").value || "local";
   setBusy(true);
-  setStatus(STAGES.start, true);
+  setStatus(t("stage_start"), true);
   state.lastRequest = { text };
   state.translateId = send({
     cmd: "translate",
@@ -146,7 +144,7 @@ function onQuestion(e) {
     button.onclick = () => translate({ clarification: option.meaning });
     return button;
   });
-  const skip = el("button", { textContent: "Egal, einfach übersetzen" });
+  const skip = el("button", { textContent: t("skip_question") });
   skip.onclick = () => translate({ clarify: false });
   $("question-options").replaceChildren(...buttons, skip);
   $("question").hidden = false;
@@ -166,11 +164,11 @@ function explain() {
   const done = state.lastDone;
   const translation = $("output").textContent.trim();
   if (state.busy || !done || !translation || $("output").classList.contains("error")) {
-    setStatus("Es gibt noch keine Übersetzung zum Erklären.");
+    setStatus(t("no_translation_to_explain"));
     return;
   }
   setBusy(true);
-  setStatus(STAGES.explaining, true);
+  setStatus(t("stage_explaining"), true);
   $("explain").hidden = true;
   state.explainId = send({
     cmd: "explain",
@@ -188,28 +186,60 @@ function onExplanation(e) {
   state.explainId = null;
   setBusy(false);
   setStatus("");
-  const nodes = [el("div", { textContent: e.summary || "Keine Besonderheiten." })];
+  const nodes = [el("div", { textContent: e.summary || t("no_particulars") })];
   if (e.alternatives?.length) {
-    nodes.push(el("h3", { textContent: "Alternativen" }));
+    nodes.push(el("h3", { textContent: t("alternatives") }));
     for (const alt of e.alternatives) {
-      const take = el("button", { textContent: "Übernehmen" });
+      const take = el("button", { textContent: t("take") });
       take.onclick = () => {
         $("output").textContent = alt.text;
         noteCorrection();
       };
       nodes.push(el("div", { className: "alt" },
-        el("div", {}, el("div", { textContent: alt.text }), el("div", { className: "note", textContent: alt.note })),
+        el("div", {},
+          el("div", { textContent: alt.text }),
+          el("div", { className: "note", textContent: alt.note }),
+          alt.example ? el("div", { className: "example", textContent: t("example_prefix") + "„" + alt.example + "“" }) : ""),
         take));
     }
   }
   if (e.notes?.length) {
-    nodes.push(el("h3", { textContent: "Anmerkungen" }));
+    nodes.push(el("h3", { textContent: t("remarks") }));
     for (const item of e.notes) {
       nodes.push(el("div", {}, el("strong", { textContent: item.source }), el("span", { className: "note", textContent: " – " + item.note })));
     }
   }
-  $("explain").replaceChildren(...nodes);
+  $("explain-body").replaceChildren(...nodes);
+  $("explain").open = true; // a fresh explanation is shown; the summary line folds it away again
   $("explain").hidden = false;
+}
+
+/** One shared bubble for the small "i" icons: shows the text on hover, focus or tap. */
+function initInfoTips() {
+  const bubble = el("div", { id: "tip", hidden: true });
+  bubble.setAttribute("role", "tooltip");
+  document.body.append(bubble);
+  const show = (icon) => {
+    bubble.textContent = t(icon.dataset.tip);
+    bubble.hidden = false;
+    const box = icon.getBoundingClientRect();
+    const width = Math.min(260, window.innerWidth - 16);
+    bubble.style.width = width + "px";
+    bubble.style.left = Math.max(8, Math.min(box.left + box.width / 2 - width / 2, window.innerWidth - width - 8)) + "px";
+    const below = box.bottom + 6;
+    const fits = below + bubble.offsetHeight <= window.innerHeight - 8;
+    bubble.style.top = (fits ? below : Math.max(8, box.top - 6 - bubble.offsetHeight)) + "px";
+  };
+  const hide = () => { bubble.hidden = true; };
+  for (const icon of document.querySelectorAll(".info[data-tip]")) {
+    icon.setAttribute("role", "img");
+    icon.addEventListener("mouseenter", () => show(icon));
+    icon.addEventListener("focus", () => show(icon));
+    icon.addEventListener("mouseleave", hide);
+    icon.addEventListener("blur", hide);
+  }
+  window.addEventListener("scroll", hide, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
 }
 
 /** Read the text from the screenshot in the clipboard, put it into the input and translate it. */
@@ -220,7 +250,7 @@ function readScreenshot() {
   showView("main");
   clearResult();
   setBusy(true);
-  setStatus(STAGES.ocr, true);
+  setStatus(t("stage_ocr"), true);
   state.ocrId = send({ cmd: "ocr", clipboard: true, lang: $("source").value || "auto" });
 }
 
@@ -230,8 +260,7 @@ function onOcr(e) {
   const wanted = $("source").value || "auto";
   state.ocrNote = e.matched || wanted === "auto" ? null : {
     text: e.text,
-    message: `Für ${languageLabel(wanted)} ist in Windows keine Texterkennung installiert, gelesen wurde mit ` +
-      `„${e.lang}“. Einzelne Zeichen können falsch sein – der erkannte Text lässt sich oben korrigieren.`,
+    message: t("ocr_note", { language: languageLabel(wanted), used: e.lang }),
   };
   $("input").value = e.text;
   translate();
@@ -258,26 +287,26 @@ function onDone(e) {
   state.sentCorrection = state.output.trim();
   const parts = [];
   if (e.source && e.target) parts.push(`${languageLabel(e.source)} → ${languageLabel(e.target)}`);
-  if (e.engine === "phrasebook") parts.push("Phrasenbuch");
+  if (e.engine === "phrasebook") parts.push(t("phrasebook"));
   else if (e.engine === "local") {
-    parts.push(`lokal · ${e.model}`);
-    if (e.seconds != null) parts.push(`${e.seconds} s (davon Laden ${e.load_seconds ?? 0} s)`);
-    parts.push(e.unloaded ? `Grafikspeicher freigegeben (${e.vram_free_after_mb} MB frei)` : "Modell noch geladen");
+    parts.push(t("meta_local", { model: e.model }));
+    if (e.seconds != null) parts.push(t("meta_seconds", { seconds: e.seconds, load: e.load_seconds ?? 0 }));
+    parts.push(e.unloaded ? t("meta_unloaded", { free: e.vram_free_after_mb }) : t("meta_loaded"));
   } else if (e.engine && e.engine !== "none") {
     const label = state.info?.engines.find((x) => x.id === e.engine)?.label || e.engine;
     parts.push(e.model ? `${label} · ${e.model}` : label);
     if (e.seconds != null) parts.push(`${e.seconds} s`);
     if (e.usage) {
-      let usage = `${e.usage.input_tokens} + ${e.usage.output_tokens} Token`;
+      let usage = t("meta_tokens", { input: e.usage.input_tokens, output: e.usage.output_tokens });
       if (e.usage.cost_usd != null) usage += ` ≈ ${e.usage.cost_usd.toFixed(4)} $`;
       parts.push(usage);
     }
   }
-  if (e.review) parts.push(e.review.changed ? "gründlich geprüft und korrigiert" : "gründlich geprüft");
+  if (e.review) parts.push(e.review.changed ? t("review_changed") : t("review_ok"));
   $("meta").textContent = parts.join(" · ");
 
   const lines = (e.warnings || []).map((w) => "⚠ " + w.message)
-    .concat((e.review?.issues || []).map((issue) => "✎ Korrigiert: " + issue));
+    .concat((e.review?.issues || []).map((issue) => "✎ " + t("corrected_prefix") + issue));
   if (state.ocrNote?.text === state.lastRequest?.text) lines.push("⚠ " + state.ocrNote.message);
   $("warnings").hidden = !lines.length;
   $("warnings").textContent = lines.join("\n");
@@ -286,21 +315,46 @@ function onDone(e) {
   $("used").hidden = !used.length;
   if (used.length) {
     $("used").querySelector("summary").textContent =
-      used.length === 1 ? "1 Eintrag aus dem Phrasengedächtnis verwendet" : `${used.length} Einträge aus dem Phrasengedächtnis verwendet`;
+      used.length === 1 ? t("used_one") : t("used_many", { count: used.length });
     $("used-list").replaceChildren(...used.map((u) => {
-      let tag = MATCH_LABELS[u.match] || u.match;
+      let tag = MATCHES.includes(u.match) ? t("match_" + u.match) : u.match;
       if (u.similarity != null) tag += ` ${Math.round(u.similarity * 100)} %`;
       return el("div", { className: "used-row" },
         el("span", { className: "tag", textContent: tag }),
         el("span", { textContent: `${u.source} → ${u.target}` }));
     }));
   }
+  renderSenses(e.senses || []);
+}
+
+/** Single words or word lists: common meanings, each with a short example sentence. */
+function renderSenses(words) {
+  $("senses").hidden = !words.length;
+  if (!words.length) return;
+  const nodes = [];
+  for (const entry of words) {
+    if (words.length > 1) nodes.push(el("h3", { textContent: entry.word }));
+    for (const sense of entry.senses) {
+      const head = el("div", { className: "sense-head" }, el("strong", { textContent: sense.translation }));
+      if (sense.meaning) head.append(el("span", { className: "note", textContent: " – " + sense.meaning }));
+      const row = el("div", { className: "sense" }, head);
+      if (sense.example) {
+        row.append(el("div", { className: "example", textContent: "„" + sense.example + "“" }));
+        if (sense.example_translation) {
+          row.append(el("div", { className: "example note", textContent: "→ " + sense.example_translation }));
+        }
+      }
+      nodes.push(row);
+    }
+  }
+  $("senses-body").replaceChildren(...nodes);
+  $("senses").open = true;
 }
 
 function onError(e) {
   if (e.code === "cancelled") {
     setBusy(false);
-    setStatus("Abgebrochen.");
+    setStatus(t("cancelled"));
     return;
   }
   if (e.code === "pack_failed") {
@@ -311,10 +365,9 @@ function onError(e) {
     setStatus(e.message);
     return;
   }
-  let text = e.message || "Unbekannter Fehler.";
+  let text = e.message || t("unknown_error");
   if (e.code === "vram_insufficient") {
-    text = `Nicht genug freier Grafikspeicher: ${e.free_mb} MB frei, benötigt ${e.need_mb} MB plus ${e.reserve_mb} MB Reserve. ` +
-      "Es wurde nichts geladen. Wähle ein kleineres Modell oder versuche es später erneut.";
+    text = t("vram_insufficient", { free: e.free_mb, need: e.need_mb, reserve: e.reserve_mb });
   }
   showError(text);
 }
@@ -337,20 +390,28 @@ function onSidecar(e) {
       renderPhrases();
       break;
     case "pack_installed":
-      $("pack-status").textContent = `Sprachpaket „${e.pack}“ installiert.`;
+      $("pack-status").textContent = t("pack_installed", { pack: e.pack });
       $("pack-url").value = "";
       send({ cmd: "status" });
       break;
     case "pack_removed":
-      $("pack-status").textContent = `Sprachpaket „${e.pack}“ entfernt.`;
+      $("pack-status").textContent = t("pack_removed", { pack: e.pack });
       send({ cmd: "status" });
       break;
     case "provider_models":
-      $("openai-models").replaceChildren(...(e.models || []).map((m) => new Option(m, m)));
-      $("p-openai_api-state").textContent = `${(e.models || []).length} Modelle gefunden – im Feld „Modell“ auswählbar.`;
+      if (e.provider === "openrouter") {
+        state.orModels = e.models || [];
+        $("or-picker").hidden = false;
+        renderOpenRouterModels();
+        $("p-openrouter-state").textContent = t("models_found", { count: state.orModels.length });
+        break;
+      }
+      state.openaiModels = (e.models || []).map((m) => m.id);
+      $("openai-models").replaceChildren(...(e.models || []).map((m) => new Option(m.id, m.id)));
+      $("p-openai_api-state").textContent = t("models_found", { count: (e.models || []).length });
       break;
     case "sidecar_exit":
-      showError("Der Übersetzungsdienst wurde beendet. Bitte die App neu starten.");
+      showError(t("sidecar_exit"));
       break;
     case "history":
       state.history = e.items || [];
@@ -358,7 +419,7 @@ function onSidecar(e) {
       else renderHistory();
       break;
     case "exported":
-      note(`${e.count} Einträge gespeichert: ${e.path}`);
+      note(t("exported", { count: e.count, path: e.path }));
       break;
     case "explanation":
       onExplanation(e);
@@ -379,11 +440,16 @@ function onSidecar(e) {
       if (e.id === state.explainId) {
         state.explainId = null;
         setBusy(false);
-        setStatus(e.code === "cancelled" ? "Abgebrochen." : e.message);
+        setStatus(e.code === "cancelled" ? t("cancelled") : e.message);
         return;
       }
       if (e.code === "export_failed") {
         note(e.message);
+        return;
+      }
+      if (e.id && e.id === state.orListId) {
+        state.orListId = null;
+        $("p-openrouter-state").textContent = e.message;
         return;
       }
       if (e.id !== state.translateId || ["pack_failed", "phrase_invalid"].includes(e.code)) {
@@ -395,12 +461,12 @@ function onSidecar(e) {
       break;
     default:
       if (e.id === state.explainId && e.event === "status") {
-        setStatus(STAGES[e.stage] || e.stage, true);
+        setStatus(stageText(e.stage), true);
         return;
       }
       if (e.id !== state.translateId) return;
-      if (e.event === "status") setStatus(STAGES[e.stage] || e.stage, true);
-      else if (e.event === "progress") setStatus(`Übersetze … Abschnitt ${e.chunk} von ${e.chunks}`, true);
+      if (e.event === "status") setStatus(stageText(e.stage), true);
+      else if (e.event === "progress") setStatus(t("progress", { chunk: e.chunk, chunks: e.chunks }), true);
       else if (e.event === "delta" || e.event === "replace") {
         const box = $("output");
         const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 30;
@@ -409,7 +475,7 @@ function onSidecar(e) {
         if (atEnd) box.scrollTop = box.scrollHeight;
       } else if (e.event === "done") onDone(e);
       else if (e.event === "question") onQuestion(e);
-      else if (e.event === "cancelled") { setBusy(false); setStatus("Abgebrochen."); }
+      else if (e.event === "cancelled") { setBusy(false); setStatus(t("cancelled")); }
   }
 }
 
@@ -430,16 +496,47 @@ function fillSelect(select, options, wanted) {
   if (keep) select.value = keep.value;
 }
 
+// ---------- Interface language ----------
+
+/** Switch the texts of the window and of the tray menu; the caller redraws what is built from data. */
+function showUiLanguage(code) {
+  const lang = setTextLanguage(code);
+  try { localStorage.setItem("ui_lang", lang); } catch (err) { /* first paint falls back to German */ }
+  applyTexts();
+  for (const id of ["ui-lang", "set-ui-lang"]) {
+    const long = id === "set-ui-lang";
+    fillSelect($(id), UI_LANGUAGES.map((l) => [l, long ? UI_LANGUAGE_NAMES[l] : l.toUpperCase()]), lang);
+  }
+  $("pack-download-hint").textContent = t("pack_download_hint", { example: PACK_EXAMPLE_URL, source: PACK_SOURCE_URL });
+  for (const icon of document.querySelectorAll(".info[data-tip]")) icon.setAttribute("aria-label", t(icon.dataset.tip));
+  invoke("set_ui_language", { lang }).catch(() => {});
+  if (state.layout) applyLayout(state.layout);
+}
+
+/** The user picked a language: show it at once and store it, so the sidecar answers in it too. */
+function chooseUiLanguage(code) {
+  showUiLanguage(code);
+  state.uiLangPending = uiLanguage;
+  setConfig({ ui_language: uiLanguage });
+  if (state.info) applyStatusInfo(state.info);
+  if (!$("view-history").hidden) renderHistory();
+  if (!$("view-settings").hidden) openSettings();
+  renderPhrases();
+}
+
 function applyStatusInfo(info) {
   const first = !state.info;
   state.info = info;
   state.config = info.config;
   const config = info.config;
+  const stored = config.ui_language;
+  if (state.uiLangPending && stored === state.uiLangPending) state.uiLangPending = null;
+  if (stored && stored !== uiLanguage && !state.uiLangPending) showUiLanguage(stored);
   const enabled = info.languages.enabled;
   const langs = enabled.map((code) => [code, languageLabel(code)]);
 
-  fillSelect($("source"), [["auto", "Automatisch erkennen"], ...langs], first ? localStorage.getItem("source") : undefined);
-  fillSelect($("target"), [["auto", "Automatisch"], ...langs], first ? localStorage.getItem("target") : undefined);
+  fillSelect($("source"), [["auto", t("auto_detect")], ...langs], first ? localStorage.getItem("source") : undefined);
+  fillSelect($("target"), [["auto", t("auto")], ...langs], first ? localStorage.getItem("target") : undefined);
   fillSelect($("style"), info.styles.map((s) => [s.id, s.label]), first ? (localStorage.getItem("style") || config.style) : undefined);
 
   const engines = info.engines.filter((e) => e.id === "local" || e.enabled)
@@ -450,8 +547,8 @@ function applyStatusInfo(info) {
   for (const option of $("size").options) {
     const preset = info.presets?.[option.value];
     option.disabled = !preset || preset.missing;
-    const label = option.textContent.replace(/ – .*/, "");
-    option.textContent = option.disabled ? `${label} – nicht installiert` : label;
+    const label = t(`size_${option.value}_opt`);
+    option.textContent = option.disabled ? `${label} – ${t("not_installed")}` : label;
   }
   const current = $("size").selectedOptions[0];
   if (first || !current || current.disabled) {
@@ -460,7 +557,7 @@ function applyStatusInfo(info) {
       || [...$("size").options].find((o) => !o.disabled);
     if (option) $("size").value = option.value;
   }
-  $("size").hidden = $("engine").value !== "local";
+  renderModelChoice();
 
   for (const item of info.downloads || []) {
     if (item.running && !state.downloads[item.item]) state.downloads[item.item] = { state: "running" };
@@ -478,33 +575,41 @@ function setConfig(config) {
 
 function renderModelRows(info) {
   const rows = [];
-  for (const size of Object.keys(SIZE_LABELS)) {
+  for (const size of SIZES) {
     const preset = info.presets?.[size] || {};
     const configured = info.config.engine.models[size] || "auto";
     const select = el("select");
-    const autoLabel = preset.auto && !preset.missing ? `Automatisch (${preset.name})` : "Automatisch";
+    const autoLabel = preset.auto && !preset.missing ? t("auto_named", { name: preset.name }) : t("auto");
     select.add(new Option(autoLabel, "auto"));
     for (const model of info.models) {
-      select.add(new Option(`${model.name} · ${(model.size_mb / 1024).toFixed(1)} GB · braucht ca. ${model.need_mb} MB VRAM`, model.path));
+      select.add(new Option(t("model_option", {
+        name: model.name, size: (model.size_mb / 1024).toFixed(1), need: model.need_mb,
+      }), model.path));
     }
     if (configured !== "auto" && ![...select.options].some((o) => o.value === configured)) {
-      select.add(new Option(`${configured} (Datei fehlt)`, configured));
+      select.add(new Option(t("file_missing", { path: configured }), configured));
     }
     select.value = configured;
     select.onchange = () => setConfig({ engine: { models: { [size]: select.value } } });
-    const browse = el("button", { textContent: "Durchsuchen …" });
+    const browse = el("button", { textContent: t("browse") });
     browse.onclick = async () => {
       const path = await invoke("pick_file", { kind: "model" });
       if (path) setConfig({ engine: { models: { [size]: path } } });
     };
-    rows.push(el("label", {}, SIZE_LABELS[size], el("span", { className: "row nowrap" }, select, browse)));
+    const example = MODEL_LINKS[size];
+    const link = el("button", { textContent: t("model_link"), title: t("model_link_title", { url: example.url }) });
+    link.onclick = () => invoke("open_url", { url: example.url }).catch((err) => setSettingsNote(String(err)));
+    rows.push(el("div", { className: "model-row" },
+      el("label", {}, t("size_" + size), el("span", { className: "row nowrap" }, select, browse)),
+      el("div", { className: "row" }, link),
+      el("p", { className: "meta", textContent: t("model_link_hint", { name: example.name }) })));
   }
   $("set-model-rows").replaceChildren(...rows);
 
   const lines = [];
-  if (info.vram) lines.push(`Grafikspeicher: ${info.vram.free} von ${info.vram.total} MB frei`);
-  else lines.push("Keine NVIDIA-Grafikkarte gefunden. Lokale Modelle brauchen eine; ohne sie bleiben die Anbieter im Internet.");
-  if (!info.runtime) lines.push("llama-server wurde nicht gefunden. Die Laufzeit lässt sich unten herunterladen.");
+  if (info.vram) lines.push(t("vram_line", { free: info.vram.free, total: info.vram.total }));
+  else lines.push(t("no_gpu"));
+  if (!info.runtime) lines.push(t("no_runtime"));
   $("set-models").textContent = lines.join("\n");
   renderDownloads(info);
 }
@@ -512,16 +617,17 @@ function renderModelRows(info) {
 // ---------- First start and downloads ----------
 
 function localReady(info) {
-  return !!info.runtime && Object.keys(SIZE_LABELS).some((size) => info.presets?.[size] && !info.presets[size].missing);
+  return !!info.runtime && SIZES.some((size) => info.presets?.[size] && !info.presets[size].missing);
 }
 
 function downloadText(item) {
   const run = state.downloads[item.item];
   if (run && run.state !== "done") {
-    const amount = run.total_mb ? ` · ${run.done_mb || 0} von ${run.total_mb} MB` : "";
-    return `${DOWNLOAD_STATES[run.state] || run.state}${amount}${run.message ? ` · ${run.message}` : ""}`;
+    const amount = run.total_mb ? " · " + t("dl_amount", { done: run.done_mb || 0, total: run.total_mb }) : "";
+    const label = DOWNLOAD_STATES.includes(run.state) ? t("dl_" + run.state) : run.state;
+    return `${label}${amount}${run.message ? ` · ${run.message}` : ""}`;
   }
-  return item.installed ? "installiert" : `${(item.size_mb / 1024).toFixed(1)} GB`;
+  return item.installed ? t("installed") : `${(item.size_mb / 1024).toFixed(1)} GB`;
 }
 
 function isRunning(item) {
@@ -539,19 +645,21 @@ function renderDownloads(info) {
   const rows = (info.downloads || []).map((item) => {
     const button = el("button");
     if (isRunning(item.item)) {
-      button.textContent = "Abbrechen";
+      button.textContent = t("cancel");
       button.onclick = () => send({ cmd: "download_cancel", item: item.item });
     } else {
-      button.textContent = item.installed ? "Installiert" : "Herunterladen";
+      button.textContent = item.installed ? t("installed_button") : t("download");
       button.disabled = item.installed;
       button.onclick = () => startDownload(item.item);
     }
+    const why = TEXTS["why_" + item.item] ? t("why_" + item.item) : "";
     return el("div", { className: "row nowrap" },
-      el("span", { className: "grow" }, item.label, el("div", { className: "meta", textContent: downloadText(item) })),
+      el("span", { className: "grow" }, item.label,
+        el("div", { className: "meta", textContent: downloadText(item) }),
+        el("div", { className: "meta", textContent: why })),
       button);
   });
-  const hint = el("p", { className: "meta",
-    textContent: `Downloads landen in ${info.data_dir}. Jede Datei wird anhand ihrer Prüfsumme kontrolliert; ein abgebrochener Download setzt beim nächsten Mal fort.` });
+  const hint = el("p", { className: "meta", textContent: t("downloads_hint", { dir: info.data_dir }) });
   $("set-downloads").replaceChildren(...rows, ...(rows.length ? [hint] : []));
 }
 
@@ -564,17 +672,17 @@ function renderSetup(info) {
   const gpu = !!info.vram;
   $("setup-text").textContent = gpu
     ? (localReady(info)
-        ? "Lokales Übersetzen ist eingerichtet."
-        : "Für lokales Übersetzen fehlt noch " + [
-            info.runtime ? null : "die llama.cpp-Laufzeit",
-            (info.models || []).length ? null : "ein Modell",
-          ].filter(Boolean).join(" und ") + ".")
-    : "Auf diesem PC wurde keine NVIDIA-Grafikkarte gefunden. Lokale Modelle laufen deshalb nicht; übersetzen lässt sich über einen Anbieter im Internet.";
+        ? t("setup_ready")
+        : t("setup_missing", { what: [
+            info.runtime ? null : t("setup_runtime"),
+            (info.models || []).length ? null : t("setup_model"),
+          ].filter(Boolean).join(t("and")) }))
+    : t("setup_no_gpu");
   $("setup-local").hidden = !gpu;
   const missing = (info.downloads || []).filter((item) => !item.installed);
   const button = $("setup-download");
   button.disabled = anyRunning || !missing.length;
-  button.textContent = anyRunning ? "Wird heruntergeladen …" : "Laufzeit und Modell herunterladen";
+  button.textContent = anyRunning ? t("downloading") : t("setup_download");
   $("setup-progress").textContent = (info.downloads || [])
     .filter((item) => state.downloads[item.item] || item.installed)
     .map((item) => `${item.label}: ${downloadText(item)}`).join("\n");
@@ -597,13 +705,13 @@ function renderProviders(info) {
     const cfg = info.config.providers[id];
     const engine = info.engines.find((e) => e.id === id);
     $(`p-${id}-on`).checked = !!cfg.enabled;
-    $(`p-${id}-state`).textContent = engine?.ready ? "Bereit." : (engine?.reason || "");
+    $(`p-${id}-state`).textContent = engine?.ready ? t("ready") : (engine?.reason || "");
     if (document.activeElement !== $(`p-${id}-model`)) $(`p-${id}-model`).value = cfg.model || "";
     const key = $(`p-${id}-key`);
     if (key) {
       key.value = "";
-      key.placeholder = cfg.key_set ? "gespeichert (neuen Schlüssel eingeben zum Ersetzen)"
-        : cfg.key_from_env ? `leer = Umgebungsvariable ${cfg.key_env}` : "Schlüssel eingeben";
+      key.placeholder = cfg.key_set ? t("key_saved")
+        : cfg.key_from_env ? t("key_env", { name: cfg.key_env }) : t("key_enter");
     }
   }
   if (document.activeElement !== $("p-openai_api-base_url")) {
@@ -620,23 +728,25 @@ function renderLanguages(info) {
         .filter((code) => (code === lang.code ? box.checked : enabled.has(code)));
       if (next.length < 2) {
         box.checked = true;
-        $("pack-status").textContent = "Mindestens zwei Sprachen müssen aktiv bleiben.";
+        $("pack-status").textContent = t("min_two_languages");
         return;
       }
       setConfig({ languages: { enabled: next } });
     };
     const count = lang.phrases ? ` (${lang.phrases})` : "";
-    return el("label", { className: "check", title: lang.phrases ? `${lang.phrases} Redewendungen im Phrasenbuch` : "" },
-      box, lang.label + count);
+    return el("label", { className: "check", title: lang.phrases ? t("phrases_count_title", { count: lang.phrases }) : "" },
+      box, languageName(lang.code, lang.label) + count);
   }));
 
   $("set-packs").replaceChildren(...info.packs.map((pack) => {
     const texts = el("div", { className: "texts" },
       el("div", { textContent: pack.name || pack.id }),
-      el("div", { className: "en", textContent: `${pack.phrases ?? 0} Einträge · ${pack.origin === "user" ? "selbst installiert" : "mitgeliefert"}` }));
+      el("div", { className: "en", textContent: t("pack_line", {
+        count: pack.phrases ?? 0, origin: pack.origin === "user" ? t("origin_user") : t("origin_bundled"),
+      }) }));
     const row = el("div", { className: "ph" }, texts);
     if (pack.origin === "user") {
-      const remove = el("button", { textContent: "✕", title: "Sprachpaket entfernen" });
+      const remove = el("button", { textContent: "✕", title: t("pack_remove_title") });
       remove.onclick = () => send({ cmd: "pack_remove", pack: pack.id });
       row.append(remove);
     }
@@ -656,10 +766,10 @@ function renderSettings(info) {
   $("set-history").checked = config.history?.enabled !== false;
   const memory = info.memory || {};
   $("set-memory").textContent = {
-    off: "Aus – es werden nur wörtlich passende Einträge verwendet.",
-    loading: "Wird vorbereitet … (beim ersten Mal wird ein Sprachmodell für die Suche geladen, ca. 120 MB)",
-    ready: `Bereit – ${memory.count} Texte durchsuchbar.`,
-    unavailable: `Nicht verfügbar: ${memory.error || "ChromaDB ist nicht installiert."} Wörtliche Einträge funktionieren weiter.`,
+    off: t("mem_off"),
+    loading: t("mem_loading"),
+    ready: t("mem_ready", { count: memory.count }),
+    unavailable: t("mem_unavailable", { error: memory.error || t("mem_no_chroma") }),
   }[memory.state] || "";
   clearTimeout(state.memoryTimer);
   if (memory.state === "loading") state.memoryTimer = setTimeout(() => send({ cmd: "status" }), 3000);
@@ -689,7 +799,7 @@ function renderPhrases() {
     const a = [].concat(entry.source || []).join(" / ");
     const b = entry.target || "";
     if (filter && !(a + " " + b).toLowerCase().includes(filter)) continue;
-    const remove = el("button", { textContent: "✕", title: "Eintrag löschen" });
+    const remove = el("button", { textContent: "✕", title: t("entry_delete_title") });
     remove.onclick = () => send({
       cmd: "phrase_delete", entry_id: entry.id, source: $("ph-source").value, target: $("ph-target").value,
     });
@@ -717,22 +827,22 @@ function historyCommand(cmd, extra = {}) {
 
 function openHistory() {
   showView("history");
-  $("hist-note").textContent = "Die Übersetzung eines Eintrags lässt sich direkt hier korrigieren und mit ★ als Phrase speichern.";
+  $("hist-note").textContent = t("hist_note");
   historyCommand("history");
 }
 
 function renderHistory() {
   const list = $("hist-list");
   if (!state.history.length) {
-    list.replaceChildren(el("div", { className: "meta", textContent: "Keine Einträge." }));
+    list.replaceChildren(el("div", { className: "meta", textContent: t("no_entries") }));
     return;
   }
   list.replaceChildren(...state.history.map((entry) => {
     const current = () => (entry.corrected || entry.output || "").trim();
-    const tag = el("span", { className: "tag", textContent: "korrigiert", hidden: !entry.corrected });
+    const tag = el("span", { className: "tag", textContent: t("corrected"), hidden: !entry.corrected });
     const out = el("div", {
       className: "out", contentEditable: "plaintext-only", spellcheck: false,
-      textContent: current(), title: "Zum Korrigieren hineinklicken",
+      textContent: current(), title: t("click_to_correct"),
     });
     // No re-render after this save: a click on a button of the same entry must still land.
     out.onblur = () => {
@@ -742,7 +852,7 @@ function renderHistory() {
       tag.hidden = !entry.corrected;
       state.quietHistoryId = historyCommand("history_correct", { entry_id: entry.id, text });
     };
-    const load = el("button", { textContent: "↩", title: "In den Übersetzer laden" });
+    const load = el("button", { textContent: "↩", title: t("load_title") });
     load.onclick = () => {
       clearResult();
       $("input").value = entry.source_text;
@@ -751,15 +861,15 @@ function renderHistory() {
       state.sentCorrection = state.output;
       $("output").textContent = state.output;
       state.lastDone = { source: entry.source, target: entry.target, history_id: entry.id };
-      $("meta").textContent = `${languageLabel(entry.source)} → ${languageLabel(entry.target)} · aus dem Verlauf vom ${entry.time}`;
+      $("meta").textContent = `${languageLabel(entry.source)} → ${languageLabel(entry.target)} · ${t("from_history", { time: entry.time })}`;
       showView("main");
     };
-    const star = el("button", { textContent: "★", title: "Als Phrase speichern (mit deiner Korrektur)" });
+    const star = el("button", { textContent: "★", title: t("star_title") });
     star.onclick = () => {
       const ok = savePhrase(entry.source, entry.target, entry.source_text, out.textContent);
-      note(ok ? "Als Phrase gespeichert – gilt ab der nächsten Übersetzung." : "Nichts zu speichern.");
+      note(ok ? t("saved_as_phrase") : t("nothing_to_save"));
     };
-    const remove = el("button", { textContent: "✕", title: "Eintrag löschen" });
+    const remove = el("button", { textContent: "✕", title: t("entry_delete_title") });
     remove.onclick = () => historyCommand("history_delete", { entry_id: entry.id });
     const engine = state.info?.engines.find((x) => x.id === entry.engine)?.label || entry.engine;
     return el("div", { className: "hist" },
@@ -779,7 +889,7 @@ function applyLayout(layout) {
   document.body.classList.toggle("floating", !docked);
   document.body.classList.toggle("edge-left", layout.edge === "left");
   $("btn-dock").textContent = docked ? "⇱" : "⇲";
-  $("btn-dock").title = docked ? "Als normales Fenster lösen" : "Am Bildschirmrand andocken";
+  $("btn-dock").title = docked ? t("dock_undock_title") : t("dock_dock_title");
   $("set-edge").value = layout.edge;
   $("set-width").value = Math.round(layout.width_percent);
   $("set-ontop").checked = layout.floating_on_top;
@@ -801,11 +911,13 @@ async function openSettings() {
   const select = $("set-monitor");
   select.replaceChildren();
   monitors.forEach((m, index) => {
-    const label = `${index + 1}: ${m.name.replace(/^\\\\\.\\/, "")} – ${m.width}×${m.height} bei (${m.x}, ${m.y})${m.primary ? " · Hauptbildschirm" : ""}`;
+    const label = t("monitor_line", {
+      index: index + 1, name: m.name.replace(/^\\\\\.\\/, ""), width: m.width, height: m.height, x: m.x, y: m.y,
+    }) + (m.primary ? t("primary") : "");
     select.add(new Option(label, m.name));
   });
   if (!monitors.some((m) => m.name === state.layout.monitor)) {
-    select.add(new Option(`${state.layout.monitor} (nicht angeschlossen)`, state.layout.monitor));
+    select.add(new Option(t("not_connected", { name: state.layout.monitor }), state.layout.monitor));
   }
   select.value = state.layout.monitor;
   $("set-autostart").checked = await invoke("get_autostart");
@@ -868,9 +980,102 @@ function initProviders() {
   $("p-openai_api-base_url").onchange = () =>
     setConfig({ providers: { openai_api: { base_url: $("p-openai_api-base_url").value.trim() || "https://api.openai.com/v1" } } });
   $("p-openai_api-list").onclick = () => {
-    $("p-openai_api-state").textContent = "Lade Modellliste …";
+    $("p-openai_api-state").textContent = t("loading_models");
     send({ cmd: "provider_models" });
   };
+  $("p-openrouter-list").onclick = () => {
+    $("p-openrouter-state").textContent = t("loading_models");
+    state.orListId = send({ cmd: "provider_models", provider: "openrouter" });
+  };
+  $("or-keys").onclick = () => invoke("open_url", { url: OPENROUTER_KEYS_URL }).catch(() => {});
+  $("or-search").oninput = renderOpenRouterModels;
+  $("or-free").onchange = renderOpenRouterModels;
+  // Arrow keys only move the selection; a click or Enter takes the model and folds the list away.
+  const takeOpenRouterModel = () => {
+    const id = $("or-list").value;
+    if (!id) return;
+    $("p-openrouter-model").value = id;
+    rememberModel("openrouter", id);
+    setConfig({ providers: { openrouter: { model: id } } });
+    $("or-picker").hidden = true;
+    $("p-openrouter-state").textContent = t("model_taken", { model: id });
+  };
+  $("or-list").onclick = (e) => { if (e.target.tagName === "OPTION") takeOpenRouterModel(); };
+  $("or-list").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); takeOpenRouterModel(); } };
+}
+
+// ---------- Model choice in the main window ----------
+
+const CLAUDE_API_MODELS = ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-2"];
+const CLAUDE_SUB_MODELS = [["haiku", "Haiku"], ["sonnet", "Sonnet"], ["opus", "Opus"]];
+const MORE_MODELS = "__more__";
+
+function recentModels(engine) {
+  try { return JSON.parse(localStorage.getItem("models_" + engine) || "[]"); } catch (err) { return []; }
+}
+
+function rememberModel(engine, model) {
+  if (!model) return;
+  const list = [model, ...recentModels(engine).filter((m) => m !== model)].slice(0, 8);
+  try { localStorage.setItem("models_" + engine, JSON.stringify(list)); } catch (err) { /* not kept */ }
+}
+
+/** Local shows the size choice; an online provider shows its model plus the ones used recently. */
+function renderModelChoice() {
+  const engine = $("engine").value || "local";
+  const local = engine === "local";
+  $("size").hidden = !local;
+  $("model").hidden = local;
+  if (local) return;
+  const current = state.config?.providers?.[engine]?.model || "";
+  let options;
+  if (engine === "claude_sub") {
+    options = [...CLAUDE_SUB_MODELS];
+  } else {
+    const ids = [current, ...recentModels(engine)];
+    if (engine === "claude_api") ids.push(...CLAUDE_API_MODELS);
+    if (engine === "openai_api") ids.push(...(state.openaiModels || []));
+    const names = Object.fromEntries((state.orModels || []).map((m) => [m.id, m.name]));
+    options = [...new Set(ids.filter(Boolean))].map((id) => [id, names[id] || id]);
+    if (engine === "chatgpt_sub") options.unshift(["", t("model_default")]);
+    else if (!current) options.unshift(["", "–"]);
+    options.push([MORE_MODELS, t("model_more")]);
+  }
+  fillSelect($("model"), options, current);
+}
+
+async function openModelSettings(engine) {
+  await openSettings();
+  const field = $(`p-${engine}-model`);
+  if (field) field.scrollIntoView({ block: "center" });
+  if (engine === "openrouter") {
+    if (state.orModels?.length) { $("or-picker").hidden = false; renderOpenRouterModels(); }
+    else $("p-openrouter-list").click();
+  }
+}
+
+/** USD per million tokens, short. */
+function formatPrice(value) {
+  if (value == null) return "?";
+  return value >= 10 ? value.toFixed(0) : value >= 1 ? value.toFixed(2) : value.toFixed(3);
+}
+
+function renderOpenRouterModels() {
+  const all = state.orModels || [];
+  const words = $("or-search").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const freeOnly = $("or-free").checked;
+  const current = $("p-openrouter-model").value.trim();
+  const shown = all.filter((m) => (!freeOnly || m.free)
+    && words.every((w) => m.id.toLowerCase().includes(w) || (m.name || "").toLowerCase().includes(w)));
+  $("or-list").replaceChildren(...shown.slice(0, 400).map((m) => {
+    const price = m.free ? t("or_price_free")
+      : t("or_price", { input: formatPrice(m.price_in), output: formatPrice(m.price_out) });
+    const option = new Option(`${m.name} · ${price}`, m.id);
+    option.title = m.id;
+    option.selected = m.id === current;
+    return option;
+  }));
+  $("or-count").textContent = t("or_count", { shown: shown.length, total: all.length });
 }
 
 async function init() {
@@ -878,6 +1083,13 @@ async function init() {
   await listen("layout", (e) => applyLayout(e.payload));
   await listen("shown", () => $("input").focus());
   await listen("translate-clipboard", pasteAndTranslate);
+
+  // The last language shows at once; the stored setting follows with the first status of the sidecar.
+  let remembered = null;
+  try { remembered = localStorage.getItem("ui_lang"); } catch (err) { /* German */ }
+  showUiLanguage(remembered || "de");
+  $("ui-lang").onchange = () => chooseUiLanguage($("ui-lang").value);
+  $("set-ui-lang").onchange = () => chooseUiLanguage($("set-ui-lang").value);
 
   applyLayout(await invoke("get_layout"));
   initResizer();
@@ -890,8 +1102,23 @@ async function init() {
     $(id).onchange = () => { localStorage.setItem(id, $(id).value); retranslate(); };
   }
   $("engine").onchange = () => {
-    $("size").hidden = $("engine").value !== "local";
+    renderModelChoice();
     setConfig({ engine: { default: $("engine").value } });
+    retranslate();
+  };
+  $("model").onchange = () => {
+    const engine = $("engine").value;
+    const model = $("model").value;
+    if (model === MORE_MODELS) {
+      renderModelChoice();
+      openModelSettings(engine);
+      return;
+    }
+    rememberModel(engine, model);
+    if (state.config?.providers?.[engine]) state.config.providers[engine].model = model;
+    const field = $(`p-${engine}-model`);
+    if (field) field.value = model;
+    setConfig({ providers: { [engine]: { model } } });
     retranslate();
   };
   $("btn-swap").onclick = () => {
@@ -927,7 +1154,7 @@ async function init() {
       // the recogniser cannot be stopped; its answer is ignored instead
       state.ocrId = null;
       setBusy(false);
-      setStatus("Abgebrochen.");
+      setStatus(t("cancelled"));
       return;
     }
     send({ cmd: "cancel" });
@@ -942,17 +1169,17 @@ async function init() {
   };
   $("btn-copy").onclick = async () => {
     await invoke("write_clipboard", { text: $("output").textContent });
-    setStatus("Kopiert.");
+    setStatus(t("copied"));
   };
   $("btn-save-phrase").onclick = () => {
     const done = state.lastDone;
     if (state.busy || !done || $("output").classList.contains("error")) {
-      setStatus("Nichts zu speichern.");
+      setStatus(t("nothing_to_save"));
       return;
     }
     noteCorrection();
     const ok = savePhrase(done.source, done.target, state.lastRequest?.text || "", $("output").textContent);
-    setStatus(ok ? "Ins Phrasenbuch übernommen – gilt ab der nächsten Übersetzung." : "Nichts zu speichern.");
+    setStatus(ok ? t("phrase_taken") : t("nothing_to_save"));
   };
 
   $("btn-dock").onclick = async () => applyLayout(await invoke("toggle_dock"));
@@ -965,6 +1192,8 @@ async function init() {
   };
   $("btn-back").onclick = $("btn-history-back").onclick = () => showView("main");
   $("btn-explain").onclick = explain;
+  initInfoTips();
+  $("pack-example").onclick = () => { $("pack-url").value = PACK_EXAMPLE_URL; };
   $("output").addEventListener("blur", noteCorrection);
   for (const id of ["thorough", "clarify"]) {
     $(id).checked = localStorage.getItem(id) === "1";
@@ -986,13 +1215,13 @@ async function init() {
   let clearArmed = null;
   $("hist-clear").onclick = () => {
     if (!clearArmed) {  // second click within four seconds confirms
-      $("hist-clear").textContent = "Wirklich alles löschen?";
-      clearArmed = setTimeout(() => { clearArmed = null; $("hist-clear").textContent = "Alles löschen"; }, 4000);
+      $("hist-clear").textContent = t("hist_clear_confirm");
+      clearArmed = setTimeout(() => { clearArmed = null; $("hist-clear").textContent = t("hist_clear"); }, 4000);
       return;
     }
     clearTimeout(clearArmed);
     clearArmed = null;
-    $("hist-clear").textContent = "Alles löschen";
+    $("hist-clear").textContent = t("hist_clear");
     historyCommand("history_clear");
   };
   $("set-history").onchange = () => setConfig({ history: { enabled: $("set-history").checked } });
@@ -1018,13 +1247,13 @@ async function init() {
   $("pack-file").onclick = async () => {
     const path = await invoke("pick_file", { kind: "pack" });
     if (!path) return;
-    $("pack-status").textContent = "Installiere …";
+    $("pack-status").textContent = t("installing");
     send({ cmd: "pack_install", path });
   };
   $("pack-download").onclick = () => {
     const url = $("pack-url").value.trim();
     if (!url) return;
-    $("pack-status").textContent = "Lade herunter …";
+    $("pack-status").textContent = t("downloading_pack");
     send({ cmd: "pack_install", url });
   };
 

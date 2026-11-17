@@ -26,7 +26,7 @@ import languages  # noqa: E402
 import providers  # noqa: E402
 from main import DEFAULT_CONFIG, deep_merge, migrate  # noqa: E402
 
-CLOUD = ("claude_sub", "claude_api", "openai_api", "chatgpt_sub")
+CLOUD = ("claude_sub", "claude_api", "openai_api", "openrouter", "chatgpt_sub")
 
 JUDGE_SYSTEM = (
     "You grade a translation. You get the source text, the translation and sometimes a reference. "

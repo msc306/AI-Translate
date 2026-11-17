@@ -1,7 +1,9 @@
 """Language catalog and a small dependency-free language guesser."""
 import re
 
-# code -> (English name used in prompts, German label used in the UI)
+from i18n import tr
+
+# code -> (English name used in prompts, German label for the UI; label() translates it)
 CATALOG = {
     "de": ("German", "Deutsch"),
     "en": ("English", "Englisch"),
@@ -19,6 +21,8 @@ CATALOG = {
     "tr": ("Turkish", "Türkisch"),
     "ro": ("Romanian", "Rumänisch"),
     "hu": ("Hungarian", "Ungarisch"),
+    "lt": ("Lithuanian", "Litauisch"),
+    "lv": ("Latvian", "Lettisch"),
     "el": ("Greek", "Griechisch"),
     "ru": ("Russian", "Russisch"),
     "uk": ("Ukrainian", "Ukrainisch"),
@@ -60,6 +64,16 @@ _STOPWORDS = {
     "tr": "ve bir bu da de için ile ben sen biz o değil mi ama veya çok var yok ne gibi daha en şu her kadar",
     "ro": "și este nu eu tu noi un o cu pe pentru de la în că se dar sau dacă meu sunt ca mai acest foarte am fi",
     "hu": "a az és nem én te mi egy van hogy de vagy ha is csak már még mint ez azt meg volt nagyon el lesz",
+    "lt": "ir yra ne aš tu mes jie kad su į iš bet ar taip kaip tai labai tik dar jau buvo kas mano tavo jis ji "
+          "apie nuo iki čia dabar",
+    "lv": "un ir nav es tu mēs viņi ka ar uz no bet vai jā kā tas ļoti tikai vēl jau bija kas mans tavs viņš "
+          "viņa par pie šeit tagad",
+}
+# letters that occur in one language only decide between close relatives
+_LETTERS = {
+    "de": set("äöüßÄÖÜ"),
+    "lt": set("ėįųĖĮŲ"),
+    "lv": set("āēģīķļņĀĒĢĪĶĻŅ"),
 }
 _STOPWORDS = {code: set(words.split()) for code, words in _STOPWORDS.items()}
 
@@ -84,7 +98,8 @@ def name(code: str) -> str:
 
 
 def label(code: str) -> str:
-    return CATALOG.get(code, (code, code))[1]
+    """Name of the language in the language of the interface."""
+    return tr(CATALOG[code][1]) if code in CATALOG else code
 
 
 def _script_guess(text: str) -> str | None:
@@ -127,8 +142,9 @@ def guess(text: str, candidates: list[str] | None = None) -> tuple[str | None, f
         stop = _STOPWORDS.get(code)
         if stop:
             scores[code] = sum(1 for w in words if w in stop)
-    if "de" in scores:
-        scores["de"] += sum(1 for ch in text if ch in "äöüßÄÖÜ")
+    for code, letters in _LETTERS.items():
+        if code in scores:
+            scores[code] += sum(1 for ch in text if ch in letters)
     if not scores:
         return None, 0.0
     ranked = sorted(scores.items(), key=lambda item: -item[1])

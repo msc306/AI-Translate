@@ -17,6 +17,7 @@ from pathlib import Path
 
 import gpu
 import winjob
+from i18n import tr
 
 NO_WINDOW = 0x08000000
 
@@ -50,7 +51,7 @@ def find_llama_server(configured: str, app_dir: Path) -> tuple[Path, list[Path]]
         exe = Path(configured)
         if exe.is_file():
             return exe, []
-        raise EngineError("runtime_missing", f"llama-server nicht gefunden: {configured}")
+        raise EngineError("runtime_missing", tr("llama-server nicht gefunden: {path}", path=configured))
 
     for folder in (app_dir / "runtime", data_dir() / "runtime"):
         own = folder / "llama-server.exe"
@@ -75,7 +76,7 @@ def find_llama_server(configured: str, app_dir: Path) -> tuple[Path, list[Path]]
         return exe, dll_dirs
     raise EngineError(
         "runtime_missing",
-        "Keine llama.cpp-Laufzeit gefunden. Sie lässt sich in den Einstellungen herunterladen.",
+        tr("Keine llama.cpp-Laufzeit gefunden. Sie lässt sich in den Einstellungen herunterladen."),
     )
 
 
@@ -140,9 +141,10 @@ class LlamaServer:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if cancel.is_set():
-                raise EngineError("cancelled", "Abgebrochen.")
+                raise EngineError("cancelled", tr("Abgebrochen."))
             if self.proc.poll() is not None:
-                raise EngineError("load_failed", f"Modell konnte nicht geladen werden (Exit {self.proc.returncode}).")
+                raise EngineError("load_failed", tr("Modell konnte nicht geladen werden (Exit {code}).",
+                                                     code=self.proc.returncode))
             try:
                 conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=2)
                 conn.request("GET", "/health")
@@ -153,7 +155,7 @@ class LlamaServer:
             except OSError:
                 pass
             time.sleep(0.15)
-        raise EngineError("load_failed", "Zeitueberschreitung beim Laden des Modells.")
+        raise EngineError("load_failed", tr("Zeitueberschreitung beim Laden des Modells."))
 
     def chat_stream(self, messages: list[dict], max_tokens: int, cancel: threading.Event):
         """Generator over text pieces of the response."""
@@ -174,10 +176,11 @@ class LlamaServer:
             response = conn.getresponse()
             if response.status != 200:
                 detail = response.read().decode("utf-8", "replace")[:300]
-                raise EngineError("generation_failed", f"llama-server meldet {response.status}: {detail}")
+                raise EngineError("generation_failed", tr("llama-server meldet {status}: {detail}",
+                                                           status=response.status, detail=detail))
             for raw in response:
                 if cancel.is_set():
-                    raise EngineError("cancelled", "Abgebrochen.")
+                    raise EngineError("cancelled", tr("Abgebrochen."))
                 line = raw.decode("utf-8", "replace").strip()
                 if not line.startswith("data:"):
                     continue

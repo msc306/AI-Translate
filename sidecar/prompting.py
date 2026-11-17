@@ -1,4 +1,5 @@
 """Prompt building for all engines."""
+import i18n
 
 SYSTEM = """You are a professional translator. Translate the user's text from {src} into {tgt}.
 
@@ -18,17 +19,27 @@ CLARIFY = """You decide whether a short text can be translated from {src} into {
 Answer {{"ambiguous": false}} in almost all cases. Answer ambiguous only when the text has two or more clearly different readings that need different translations and nothing in the text decides between them, for example a word with two unrelated meanings ("Bank": bench or financial institution) used without context. Unknown formality, missing context in general, or several equally good wordings are NOT ambiguity.
 
 When ambiguous, answer:
-{{"ambiguous": true, "question": "<one short question in German>", "options": [{{"label": "<reading in German, at most 6 words>", "meaning": "<this reading in one English sentence>"}}]}}
+{{"ambiguous": true, "question": "<one short question in {ui}>", "options": [{{"label": "<reading in {ui}, at most 6 words>", "meaning": "<this reading in one English sentence>"}}]}}
 Give 2 or 3 options."""
 
-EXPLAIN = """You explain a translation from {src} into {tgt} to a German-speaking user.
+EXPLAIN = """You explain a translation from {src} into {tgt} to a {ui}-speaking user.
 """ + MATERIAL + """
 
-Answer in this form, all explanations in German:
+Answer in this form, all explanations in {ui}:
 {{"summary": "<one sentence: why this translation fits, or what is wrong with it>",
- "alternatives": [{{"text": "<another correct translation in {tgt}>", "note": "<when this one fits better>"}}],
+ "alternatives": [{{"text": "<another correct translation in {tgt}>", "note": "<when this one fits better>",
+   "example": "<a short everyday {tgt} sentence that uses this wording, or \\"\\" when the alternative is already a full sentence>"}}],
  "notes": [{{"source": "<word or phrase from the source text>", "note": "<what was decided there and why>"}}]}}
 Give 2 or 3 alternatives that really differ (register, emphasis, region), and at most 4 notes, only for idioms, false friends, ambiguous words or other points worth knowing. Use an empty list when there is nothing to say."""
+
+SENSES = """You list the common meanings of single words or short expressions from {src}, with their {tgt} translations, for a {ui}-speaking user.
+""" + MATERIAL + """
+
+For every entry between <words> and </words>, in the same order, answer in this form:
+{{"words": [{{"word": "<the entry as given>", "senses": [{{"translation": "<{tgt} word or expression for this meaning>",
+   "meaning": "<this meaning in a few {ui} words>", "example": "<short everyday {src} sentence using the entry in this meaning>",
+   "example_translation": "<that sentence in {tgt}>"}}]}}]}}
+Give 2 to 4 senses per entry, the most common first; give one only when the entry really has a single meaning. Include another part of speech when it is common (noun and verb, adjective and adverb). Examples have at most 10 words and show how people really use the word."""
 
 REVIEW = """You are a second translator who checks a draft translation from {src} into {tgt}.
 """ + MATERIAL + """
@@ -36,10 +47,13 @@ REVIEW = """You are a second translator who checks a draft translation from {src
 Look for real errors only: wrong or shifted meaning, missing or added content, idioms translated word by word, grammar or spelling mistakes, lost line breaks or formatting, text that was answered instead of translated. Do not change correct wording for taste.{style}
 
 Answer in this form:
-{{"issues": ["<each error in one short German sentence>"], "improved": "<the complete corrected translation in {tgt}>"}}
+{{"issues": ["<each error in one short {ui} sentence>"], "improved": "<the complete corrected translation in {tgt}>"}}
 When the draft has no errors, answer {{"issues": [], "improved": ""}}."""
 
-# id -> (German label for the UI, instruction for the model)
+# The prompts above name the language of the user interface as {ui}: questions, explanations and
+# review notes are shown to the user, so the model writes them in that language.
+
+# id -> (German label for the UI, shown through i18n.tr(); instruction for the model)
 STYLES = {
     "neutral": ("Neutral", ""),
     "formal": ("Förmlich", "Use a formal, polite register, even if the source is casual "
@@ -123,19 +137,25 @@ def build_messages(text, src_name, tgt_name, hints=(), similar=(), style="neutra
 
 
 def clarify_messages(text, src_name, tgt_name):
-    return [{"role": "system", "content": CLARIFY.format(src=src_name, tgt=tgt_name)},
+    return [{"role": "system", "content": CLARIFY.format(src=src_name, tgt=tgt_name, ui=i18n.language_name())},
             {"role": "user", "content": f"<text>\n{text}\n</text>"}]
 
 
 def explain_messages(text, translation, src_name, tgt_name):
-    return [{"role": "system", "content": EXPLAIN.format(src=src_name, tgt=tgt_name)},
+    return [{"role": "system", "content": EXPLAIN.format(src=src_name, tgt=tgt_name, ui=i18n.language_name())},
             {"role": "user", "content": f"<source>\n{text}\n</source>\n<translation>\n{translation}\n</translation>"}]
+
+
+def senses_messages(words, src_name, tgt_name):
+    listing = "\n".join(words)
+    return [{"role": "system", "content": SENSES.format(src=src_name, tgt=tgt_name, ui=i18n.language_name())},
+            {"role": "user", "content": f"<words>\n{listing}\n</words>"}]
 
 
 def review_messages(text, draft, src_name, tgt_name, style="neutral"):
     instruction = STYLES.get(style, STYLES["neutral"])[1]
     style_block = f" The requested style is: {instruction}" if instruction else ""
-    return [{"role": "system", "content": REVIEW.format(src=src_name, tgt=tgt_name, style=style_block)},
+    return [{"role": "system", "content": REVIEW.format(src=src_name, tgt=tgt_name, style=style_block, ui=i18n.language_name())},
             {"role": "user", "content": f"<source>\n{text}\n</source>\n<draft>\n{draft}\n</draft>"}]
 
 

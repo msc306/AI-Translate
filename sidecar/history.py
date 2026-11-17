@@ -6,6 +6,8 @@ import time
 import uuid
 from pathlib import Path
 
+from i18n import tr
+
 FORMATS = ("csv", "json", "md")
 FIELDS = ("time", "source", "target", "engine", "model", "style", "source_text", "output", "corrected")
 
@@ -77,7 +79,7 @@ class History:
 
     def export(self, path: Path, fmt: str, corrected_only: bool = False) -> int:
         if fmt not in FORMATS:
-            raise ValueError(f"Unbekanntes Format: {fmt}")
+            raise ValueError(tr("Unbekanntes Format: {fmt}", fmt=fmt))
         rows = self.items(corrected_only=corrected_only, limit=self.limit)
         rows = [{k: e.get(k) or "" for k in FIELDS} for e in rows]
         if fmt == "json":
@@ -91,8 +93,10 @@ class History:
         else:
             def cell(value):
                 return value.replace("|", "\\|").replace("\n", "<br>")
-            lines = ["# Turing Translate: Verlauf", "",
-                     "| Zeit | Richtung | Anbieter | Ausgangstext | Übersetzung | Korrektur |",
+            columns = (tr("Zeit"), tr("Richtung"), tr("Anbieter"), tr("Ausgangstext"), tr("Übersetzung"),
+                       tr("Korrektur"))
+            lines = ["# " + tr("Turing Translate: Verlauf"), "",
+                     "| " + " | ".join(columns) + " |",
                      "|---|---|---|---|---|---|"]
             lines += ["| " + " | ".join(cell(c) for c in (
                 r["time"], f"{r['source']} → {r['target']}", r["engine"],

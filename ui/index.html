@@ -7,61 +7,66 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="resizer" title="Breite ziehen"></div>
+<div id="resizer" data-i18n-title="resizer_title"></div>
 
 <header id="bar">
-  <span class="title">Übersetzer</span>
+  <span class="title" data-i18n="title">Übersetzer</span>
+  <select id="ui-lang" data-i18n-title="ui_lang_title"></select>
   <span class="spacer"></span>
-  <button id="btn-dock" title="Andocken / als Fenster lösen">⇱</button>
-  <button id="btn-history" title="Verlauf">🕘</button>
-  <button id="btn-settings" title="Einstellungen">⚙</button>
-  <button id="btn-hide" title="Verbergen (bleibt im Infobereich)">✕</button>
+  <button id="btn-dock">⇱</button>
+  <button id="btn-history" data-i18n-title="history">🕘</button>
+  <button id="btn-settings" data-i18n-title="settings">⚙</button>
+  <button id="btn-hide" data-i18n-title="hide_title">✕</button>
 </header>
 
 <main id="view-main">
   <div class="row nowrap">
-    <select id="source" title="Ausgangssprache"></select>
-    <button id="btn-swap" title="Sprachen tauschen">⇄</button>
-    <select id="target" title="Zielsprache"></select>
+    <select id="source" data-i18n-title="source_title"></select>
+    <button id="btn-swap" data-i18n-title="swap_title">⇄</button>
+    <select id="target" data-i18n-title="target_title"></select>
   </div>
   <div class="row nowrap">
-    <select id="engine" title="Womit übersetzt wird"></select>
-    <select id="size" title="Lokales Modell">
-      <option value="small">Klein (schnell)</option>
-      <option value="medium">Mittel</option>
-      <option value="large">Groß (beste Qualität)</option>
+    <select id="engine" data-i18n-aria-label="engine_title"></select>
+    <span class="info" tabindex="0" data-tip="engine_tip">i</span>
+    <select id="size" data-i18n-aria-label="size_title">
+      <option value="small"></option>
+      <option value="medium"></option>
+      <option value="large"></option>
     </select>
-    <select id="style" title="Stil der Übersetzung"></select>
+    <select id="model" data-i18n-aria-label="model" hidden></select>
+    <span class="info" tabindex="0" data-tip="model_tip">i</span>
+    <select id="style" data-i18n-aria-label="style_title"></select>
+    <span class="info" tabindex="0" data-tip="style_tip">i</span>
   </div>
 
-  <textarea id="input" placeholder="Text eingeben oder einfügen, auch Screenshots (Strg+V) … (Strg+Enter übersetzt)" spellcheck="false"></textarea>
+  <textarea id="input" data-i18n-placeholder="input_placeholder" spellcheck="false"></textarea>
 
   <div class="row">
-    <button id="btn-translate" class="primary">Übersetzen</button>
-    <button id="btn-cancel" hidden>Abbrechen</button>
-    <button id="btn-paste" title="Zwischenablage einfügen und übersetzen – Text oder Screenshot">Einfügen</button>
-    <button id="btn-clear">Leeren</button>
+    <button id="btn-translate" class="primary" data-i18n="translate"></button>
+    <button id="btn-cancel" data-i18n="cancel" hidden></button>
+    <button id="btn-paste" data-i18n="paste" data-i18n-title="paste_title"></button>
+    <span class="with-info"><button id="btn-clear" data-i18n="clear"></button><span class="info" tabindex="0" data-tip="clear_tip">i</span></span>
     <span class="spacer"></span>
-    <label class="check"><input type="checkbox" id="auto"> automatisch</label>
+    <span class="with-info"><label class="check"><input type="checkbox" id="auto"> <span data-i18n="auto_check"></span></label><span class="info" tabindex="0" data-tip="auto_tip">i</span></span>
   </div>
 
   <div class="row">
-    <label class="check" title="Das Modell prüft seine Übersetzung in einem zweiten Durchgang und korrigiert Fehler. Dauert etwa doppelt so lang."><input type="checkbox" id="thorough"> gründlich</label>
-    <label class="check" title="Bei kurzen, mehrdeutigen Texten (z. B. „Bank“) erst fragen, was gemeint ist."><input type="checkbox" id="clarify"> bei Mehrdeutigkeit nachfragen</label>
+    <span class="with-info"><label class="check"><input type="checkbox" id="thorough"> <span data-i18n="thorough"></span></label><span class="info" tabindex="0" data-tip="thorough_title">i</span></span>
+    <span class="with-info"><label class="check"><input type="checkbox" id="clarify"> <span data-i18n="clarify"></span></label><span class="info" tabindex="0" data-tip="clarify_title">i</span></span>
   </div>
 
   <div id="status" class="status"></div>
 
   <div id="setup" class="card" hidden>
-    <h2>Erste Schritte</h2>
+    <h2 data-i18n="setup_title"></h2>
     <p id="setup-text"></p>
     <div id="setup-local">
-      <p class="meta">Lokal übersetzen: Der Text verlässt den PC nicht. Dafür werden die llama.cpp-Laufzeit und ein kleines Modell geladen (zusammen etwa 3,9 GB, einmalig). Wer LM Studio mit einem Modell installiert hat, braucht nichts zu laden.</p>
-      <div class="row"><button id="setup-download" class="primary">Laufzeit und Modell herunterladen</button></div>
+      <p class="meta" data-i18n="setup_local"></p>
+      <div class="row"><button id="setup-download" class="primary"></button></div>
       <div id="setup-progress" class="meta"></div>
     </div>
-    <p class="meta">Alternativ: In den Einstellungen unter „Anbieter im Internet“ ein Claude- oder ChatGPT-Abo oder einen API-Schlüssel einschalten.</p>
-    <div class="row"><button id="setup-settings">Einstellungen öffnen</button></div>
+    <p class="meta" data-i18n="setup_alt"></p>
+    <div class="row"><button id="setup-settings" data-i18n="setup_open_settings"></button></div>
   </div>
 
   <div id="question" class="card" hidden>
@@ -70,12 +75,12 @@
   </div>
 
   <div id="output" class="output" tabindex="0" contenteditable="plaintext-only" spellcheck="false"
-       title="Die Übersetzung lässt sich hier korrigieren und dann ins Phrasenbuch übernehmen"></div>
+       data-i18n-title="output_title"></div>
 
   <div class="row">
-    <button id="btn-copy">Kopieren</button>
-    <button id="btn-save-phrase" title="Eingabe und (ggf. korrigierte) Ausgabe als festen Eintrag ins Phrasenbuch übernehmen">Ins Phrasenbuch</button>
-    <button id="btn-explain" title="Erklärt die Übersetzung und zeigt Alternativen">Erklären</button>
+    <button id="btn-copy" data-i18n="copy"></button>
+    <span class="with-info"><button id="btn-save-phrase" data-i18n="save_phrase"></button><span class="info" tabindex="0" data-tip="save_phrase_tip">i</span></span>
+    <span class="with-info"><button id="btn-explain" data-i18n="explain"></button><span class="info" tabindex="0" data-tip="explain_tip">i</span></span>
   </div>
   <div id="meta" class="meta"></div>
   <div id="warnings" class="warnings" hidden></div>
@@ -83,126 +88,160 @@
     <summary></summary>
     <div id="used-list"></div>
   </details>
-  <div id="explain" class="card" hidden></div>
+  <details id="senses" class="card" hidden>
+    <summary data-i18n="senses_heading"></summary>
+    <div id="senses-body"></div>
+  </details>
+  <details id="explain" class="card" hidden>
+    <summary data-i18n="explanation_heading"></summary>
+    <div id="explain-body"></div>
+  </details>
 </main>
 
 <main id="view-history" hidden>
   <div class="row">
-    <button id="btn-history-back">← Zurück</button>
+    <button id="btn-history-back" data-i18n="back"></button>
     <span class="spacer"></span>
-    <button id="hist-clear" title="Den ganzen Verlauf löschen">Alles löschen</button>
+    <button id="hist-clear" data-i18n="hist_clear" data-i18n-title="hist_clear_title"></button>
   </div>
   <div class="row nowrap">
-    <input type="text" id="hist-filter" placeholder="Im Verlauf suchen …">
-    <label class="check"><input type="checkbox" id="hist-corrected"> nur korrigierte</label>
+    <input type="text" id="hist-filter" data-i18n-placeholder="hist_filter">
+    <label class="check"><input type="checkbox" id="hist-corrected"> <span data-i18n="hist_corrected"></span></label>
   </div>
   <div class="row nowrap">
-    <select id="hist-format" title="Dateiformat für den Export">
+    <select id="hist-format" data-i18n-title="hist_format_title">
       <option value="csv">CSV (Excel)</option>
       <option value="json">JSON</option>
       <option value="md">Markdown</option>
     </select>
-    <button id="hist-export" title="Speichert die angezeigte Auswahl (alle oder nur korrigierte) als Datei">Exportieren …</button>
+    <button id="hist-export" data-i18n="hist_export" data-i18n-title="hist_export_title"></button>
   </div>
-  <div id="hist-note" class="meta">Die Übersetzung eines Eintrags lässt sich direkt hier korrigieren und mit ★ als Phrase speichern.</div>
+  <div id="hist-note" class="meta"></div>
   <div id="hist-list"></div>
 </main>
 
 <main id="view-settings" hidden>
-  <div class="row"><button id="btn-back">← Zurück</button><span class="spacer"></span></div>
+  <div class="row"><button id="btn-back" data-i18n="back"></button><span class="spacer"></span></div>
 
-  <h2>Fenster</h2>
-  <label>Bildschirm <select id="set-monitor"></select></label>
-  <label>Seite
-    <select id="set-edge"><option value="right">rechts</option><option value="left">links</option></select>
-  </label>
-  <label>Breite in % <input type="number" id="set-width" min="10" max="70" step="1"></label>
-  <label class="check"><input type="checkbox" id="set-ontop"> Gelöstes Fenster immer im Vordergrund</label>
-  <label class="check"><input type="checkbox" id="set-autostart"> Mit Windows starten</label>
-  <label>Tastenkürzel Anzeigen/Verbergen <input type="text" id="set-hk-toggle"></label>
-  <label>Tastenkürzel Zwischenablage übersetzen <input type="text" id="set-hk-clip"></label>
+  <h2 data-i18n="sec_languages"></h2>
+  <label><span data-i18n="ui_language"></span> <select id="set-ui-lang"></select></label>
+  <p class="meta" data-i18n="ui_language_hint"></p>
+  <h3 data-i18n="translation_languages"></h3>
+  <p class="meta" data-i18n="languages_hint"></p>
+  <div id="set-languages" class="grid"></div>
+  <h3 data-i18n="packs_title"></h3>
+  <div id="set-packs"></div>
+  <div class="row">
+    <button id="pack-file" data-i18n="pack_file"></button>
+  </div>
+  <p class="meta" data-i18n="pack_file_hint"></p>
+  <div class="row nowrap">
+    <input type="text" id="pack-url" data-i18n-placeholder="pack_url">
+    <button id="pack-download" data-i18n="download"></button>
+  </div>
+  <p id="pack-download-hint" class="meta"></p>
+  <div class="row"><button id="pack-example" data-i18n="pack_example_use"></button></div>
+  <div id="pack-status" class="meta"></div>
 
-  <h2>Lokale Modelle</h2>
-  <p class="meta">Für jede Größe lässt sich ein Modell wählen: aus den gefundenen Modellen auf diesem PC oder über „Durchsuchen“ eine beliebige GGUF-Datei.</p>
+  <h2 data-i18n="sec_local"></h2>
+  <p class="meta" data-i18n="local_hint"></p>
   <div id="set-model-rows"></div>
   <div id="set-models" class="meta"></div>
   <div id="set-downloads"></div>
-  <label>VRAM-Reserve für andere Programme (MB) <input type="number" id="set-reserve" min="0" step="256"></label>
-  <label>Modell nach Übersetzung geladen lassen (Sekunden, 0 = sofort entladen)
+  <label><span data-i18n="reserve"></span> <input type="number" id="set-reserve" min="0" step="256"></label>
+  <p class="meta" data-i18n="reserve_hint"></p>
+  <label><span data-i18n="keep"></span>
     <input type="number" id="set-keep" min="0" step="5"></label>
+  <p class="meta" data-i18n="keep_hint"></p>
 
-  <h2>Anbieter im Internet</h2>
-  <p class="meta">Alle standardmäßig aus. Ein eingeschalteter Anbieter erscheint in der Auswahl im Hauptfenster; solange er dort gewählt ist, wird der Text an ihn gesendet.</p>
+  <h2 data-i18n="sec_online"></h2>
+  <p class="meta" data-i18n="online_hint"></p>
 
   <div class="card">
-    <label class="check"><input type="checkbox" id="p-claude_sub-on"> Claude-Abo (Pro/Max) über Claude Code</label>
+    <label class="check"><input type="checkbox" id="p-claude_sub-on"> <span data-i18n="p_claude_sub"></span></label>
     <div id="p-claude_sub-state" class="meta"></div>
-    <label>Modell
-      <select id="p-claude_sub-model"><option value="haiku">Haiku (schnell)</option><option value="sonnet">Sonnet</option><option value="opus">Opus</option></select>
+    <label><span data-i18n="model"></span>
+      <select id="p-claude_sub-model"><option value="haiku" data-i18n="haiku_fast"></option><option value="sonnet">Sonnet</option><option value="opus">Opus</option></select>
     </label>
   </div>
 
   <div class="card">
-    <label class="check"><input type="checkbox" id="p-claude_api-on"> Claude-API (Abrechnung nach Verbrauch)</label>
+    <label class="check"><input type="checkbox" id="p-claude_api-on"> <span data-i18n="p_claude_api"></span></label>
     <div id="p-claude_api-state" class="meta"></div>
-    <label>API-Schlüssel
-      <span class="row nowrap"><input type="password" id="p-claude_api-key"><button id="p-claude_api-clear" title="Gespeicherten Schlüssel löschen">✕</button></span>
+    <label><span data-i18n="api_key"></span>
+      <span class="row nowrap"><input type="password" id="p-claude_api-key"><button id="p-claude_api-clear" data-i18n-title="clear_key_title">✕</button></span>
     </label>
-    <label>Modell <input type="text" id="p-claude_api-model"></label>
+    <label><span data-i18n="model"></span> <input type="text" id="p-claude_api-model"></label>
   </div>
 
   <div class="card">
-    <label class="check"><input type="checkbox" id="p-chatgpt_sub-on"> ChatGPT-Abo (Plus/Pro) über Codex</label>
+    <label class="check"><input type="checkbox" id="p-chatgpt_sub-on"> <span data-i18n="p_chatgpt_sub"></span></label>
     <div id="p-chatgpt_sub-state" class="meta"></div>
-    <label>Modell (leer = Standard des Abos) <input type="text" id="p-chatgpt_sub-model"></label>
+    <label><span data-i18n="chatgpt_model"></span> <input type="text" id="p-chatgpt_sub-model"></label>
   </div>
 
   <div class="card">
-    <label class="check"><input type="checkbox" id="p-openai_api-on"> OpenAI-API oder kompatibler Anbieter</label>
+    <label class="check"><input type="checkbox" id="p-openai_api-on"> <span data-i18n="p_openai_api"></span></label>
     <div id="p-openai_api-state" class="meta"></div>
-    <label>Adresse <input type="text" id="p-openai_api-base_url" placeholder="https://api.openai.com/v1"></label>
-    <label>API-Schlüssel
-      <span class="row nowrap"><input type="password" id="p-openai_api-key"><button id="p-openai_api-clear" title="Gespeicherten Schlüssel löschen">✕</button></span>
+    <label><span data-i18n="address"></span> <input type="text" id="p-openai_api-base_url" placeholder="https://api.openai.com/v1"></label>
+    <label><span data-i18n="api_key"></span>
+      <span class="row nowrap"><input type="password" id="p-openai_api-key"><button id="p-openai_api-clear" data-i18n-title="clear_key_title">✕</button></span>
     </label>
-    <label>Modell
-      <span class="row nowrap"><input type="text" id="p-openai_api-model" list="openai-models"><button id="p-openai_api-list">Modelle laden</button></span>
+    <label><span data-i18n="model"></span>
+      <span class="row nowrap"><input type="text" id="p-openai_api-model" list="openai-models"><button id="p-openai_api-list" data-i18n="load_models"></button></span>
     </label>
     <datalist id="openai-models"></datalist>
   </div>
 
-  <h2>Sprachen</h2>
-  <p class="meta">Angehakte Sprachen stehen im Hauptfenster zur Auswahl. Ein Sprachpaket ist dafür nicht nötig – es ergänzt feste Redewendungen für ein Sprachpaar.</p>
-  <div id="set-languages" class="grid"></div>
-  <h3>Sprachpakete</h3>
-  <div id="set-packs"></div>
-  <div class="row">
-    <button id="pack-file">Sprachpaket aus Datei …</button>
+  <div class="card">
+    <label class="check"><input type="checkbox" id="p-openrouter-on"> <span data-i18n="p_openrouter"></span></label>
+    <div id="p-openrouter-state" class="meta"></div>
+    <p class="meta" data-i18n="or_hint"></p>
+    <div class="row"><button id="or-keys" data-i18n="or_get_key"></button></div>
+    <label><span data-i18n="api_key"></span>
+      <span class="row nowrap"><input type="password" id="p-openrouter-key"><button id="p-openrouter-clear" data-i18n-title="clear_key_title">✕</button></span>
+    </label>
+    <label><span data-i18n="model"></span>
+      <span class="row nowrap"><input type="text" id="p-openrouter-model" placeholder="google/gemini-2.5-flash"><button id="p-openrouter-list" data-i18n="load_models"></button></span>
+    </label>
+    <div id="or-picker" class="or-picker" hidden>
+      <span class="row nowrap"><input type="search" id="or-search" data-i18n-placeholder="or_search"><label class="check"><input type="checkbox" id="or-free"> <span data-i18n="or_free"></span></label></span>
+      <select id="or-list" size="8"></select>
+      <div id="or-count" class="meta"></div>
+    </div>
   </div>
-  <div class="row nowrap">
-    <input type="text" id="pack-url" placeholder="https://… Adresse eines Sprachpakets (.zip)">
-    <button id="pack-download">Herunterladen</button>
-  </div>
-  <div id="pack-status" class="meta"></div>
 
-  <h2>Phrasengedächtnis</h2>
-  <label class="check"><input type="checkbox" id="set-vector"> Ähnliche Redewendungen finden (Vektordatenbank ChromaDB)</label>
+  <h2 data-i18n="sec_window"></h2>
+  <label><span data-i18n="monitor"></span> <select id="set-monitor"></select></label>
+  <label><span data-i18n="edge"></span>
+    <select id="set-edge"><option value="right" data-i18n="right"></option><option value="left" data-i18n="left"></option></select>
+  </label>
+  <label><span data-i18n="width"></span> <input type="number" id="set-width" min="10" max="70" step="1"></label>
+  <label class="check"><input type="checkbox" id="set-ontop"> <span data-i18n="ontop"></span></label>
+  <label class="check"><input type="checkbox" id="set-autostart"> <span data-i18n="autostart"></span></label>
+  <label><span data-i18n="hk_toggle"></span> <input type="text" id="set-hk-toggle"></label>
+  <label><span data-i18n="hk_clip"></span> <input type="text" id="set-hk-clip"></label>
+
+  <h2 data-i18n="sec_memory"></h2>
+  <label class="check"><input type="checkbox" id="set-vector"> <span data-i18n="vector"></span></label>
   <div id="set-memory" class="meta"></div>
-  <label class="check"><input type="checkbox" id="set-checks"> Übersetzung prüfen und bei Auffälligkeiten einmal neu versuchen</label>
-  <label class="check"><input type="checkbox" id="set-history"> Verlauf der Übersetzungen speichern (nur auf diesem PC)</label>
-  <div class="row"><button id="ph-export" title="Speichert deine eigenen Einträge als Sprachpaket, das andere installieren können">Eigene Phrasen exportieren …</button></div>
+  <label class="check"><input type="checkbox" id="set-checks"> <span data-i18n="checks"></span></label>
+  <label class="check"><input type="checkbox" id="set-history"> <span data-i18n="history_save"></span></label>
+  <div class="row"><button id="ph-export" data-i18n="ph_export" data-i18n-title="ph_export_title"></button></div>
   <div class="row nowrap">
-    <select id="ph-source" title="Sprache links"></select>
-    <select id="ph-target" title="Sprache rechts"></select>
+    <select id="ph-source" data-i18n-title="lang_left"></select>
+    <select id="ph-target" data-i18n-title="lang_right"></select>
   </div>
   <div class="row nowrap">
-    <input type="text" id="ph-a" placeholder="Redewendung">
-    <input type="text" id="ph-b" placeholder="Übersetzung">
+    <input type="text" id="ph-a" data-i18n-placeholder="ph_a">
+    <input type="text" id="ph-b" data-i18n-placeholder="ph_b">
     <button id="ph-add">+</button>
   </div>
-  <input type="text" id="ph-filter" placeholder="Suchen …">
+  <input type="text" id="ph-filter" data-i18n-placeholder="search">
   <div id="ph-list"></div>
 </main>
 
+<script src="i18n.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -19,7 +19,7 @@ PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 VERSION = "0.2.0"
 TIMEOUT = 600  # seconds for one translation, including loading a local model
 
-ENGINES = ["local", "claude_sub", "claude_api", "openai_api", "chatgpt_sub"]
+ENGINES = ["local", "claude_sub", "claude_api", "openai_api", "openrouter", "chatgpt_sub"]
 COMMON = {
     "engine": {"type": "string", "enum": ENGINES,
                "description": "Which engine to use. Default: the one chosen in the app (usually 'local')."},

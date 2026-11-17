@@ -50,6 +50,11 @@ body.floating #resizer { display: none; }
   user-select: none;
 }
 #bar .title { font-weight: 600; }
+#bar #ui-lang { flex: none; width: auto; padding: 1px 2px; font-size: 12px; }
+.model-row { display: flex; flex-direction: column; gap: 4px; }
+.or-picker { display: flex; flex-direction: column; gap: 4px; }
+.or-picker .check { white-space: nowrap; }
+#or-list { width: 100%; font-size: 12px; }
 #bar button { border: none; background: transparent; padding: 2px 8px; font-size: 15px; }
 #bar button:hover { background: var(--panel); }
 
@@ -59,7 +64,10 @@ main {
   padding: 10px;
 }
 main[hidden] { display: none; }
-#view-settings { overflow-y: auto; }
+#view-settings, #view-history { overflow-y: auto; }
+#hist-list { flex-shrink: 0; }
+#style { flex: 0 1 auto; width: 6.5em; }
+#engine, #size, #model { flex: 1 1 0; }
 
 .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .spacer { flex: 1; }
@@ -158,8 +166,29 @@ h3 { font-size: 12.5px; margin: 6px 0 0; color: var(--muted); font-weight: 600; 
 .hist .out { white-space: pre-wrap; border-radius: 4px; padding: 1px 3px; margin: 0 -3px; }
 .hist .out:focus { background: var(--bg); }
 #question-text { font-weight: 600; }
-#explain { font-size: 13px; overflow-wrap: anywhere; }
+#explain, #senses { display: block; font-size: 13px; overflow-wrap: anywhere; }
+#explain > summary, #senses > summary { cursor: pointer; font-weight: 600; user-select: none; }
+#explain-body, #senses-body { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+
+/* ---------- info icons ---------- */
+.with-info { display: inline-flex; align-items: center; gap: 4px; }
+.info {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 15px; height: 15px; border: 1px solid var(--muted); border-radius: 50%;
+  color: var(--muted); font: italic 600 10.5px/1 Georgia, "Times New Roman", serif;
+  cursor: help; user-select: none;
+}
+.info:hover, .info:focus-visible { color: var(--accent); border-color: var(--accent); outline: none; }
+#tip {
+  position: fixed; z-index: 50; box-sizing: border-box; padding: 6px 8px;
+  background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); font-size: 12.5px; line-height: 1.35; pointer-events: none;
+}
 #explain .alt { display: flex; gap: 6px; align-items: baseline; }
 #explain .alt > div { flex: 1; min-width: 0; }
-#explain .note { color: var(--muted); font-size: 12.5px; }
-#explain h3 { font-size: 12px; margin: 4px 0 0; color: var(--muted); font-weight: 600; }
+#explain .note, #senses .note { color: var(--muted); font-size: 12.5px; }
+#explain h3, #senses h3 { font-size: 12px; margin: 4px 0 0; color: var(--muted); font-weight: 600; }
+
+/* word meanings */
+.sense { display: flex; flex-direction: column; gap: 1px; }
+#explain .example, #senses .example { font-style: italic; font-size: 12.5px; }

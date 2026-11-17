@@ -50,6 +50,34 @@ def _split_long(paragraph: str, limit: int) -> list[str]:
     return parts
 
 
+_BULLET = re.compile(r"^\s*(?:[-*•–]|\d{1,2}[.)])\s+")
+_LETTER = re.compile(r"[^\W\d_]")
+MAX_LIST_WORDS = 12
+
+
+def word_list(text: str) -> list[str] | None:
+    """Return the entries when the text is a single word or a list of words, else None.
+
+    A list has one entry per line, or entries separated by commas or semicolons on one line.
+    An entry has at most three words and no sentence punctuation, so a short sentence is not a list.
+    """
+    lines = [line for line in text.replace("\r\n", "\n").split("\n") if line.strip()]
+    if len(lines) == 1 and re.search(r"[,;]", lines[0]):
+        lines = re.split(r"[,;]", lines[0])
+    entries = []
+    for line in lines:
+        entry = _BULLET.sub("", line).strip().strip("\"'„“”«»")
+        if not entry:
+            continue
+        if (len(entry) > 40 or len(entry.split()) > 3 or re.search(r"[.!?:…]\s*\S|[.!?]$", entry)
+                or not _LETTER.search(entry)):
+            return None
+        entries.append(entry)
+    if not entries or len(entries) > MAX_LIST_WORDS:
+        return None
+    return list(dict.fromkeys(entries))
+
+
 def chunk_text(text: str, limit: int = 1400) -> list[tuple[str, str]]:
     """Splits text into (section, separator) pairs.
 

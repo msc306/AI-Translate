@@ -22,10 +22,15 @@ Commands and the events that answer them:
   ocr {clipboard?: true, path?, lang?}
       -> ocr {text, lang, matched, available}   text read from a screenshot by the Windows text recogniser
 Failures are reported as error {code, message}.
+
+Every text meant for the user (messages, labels, reasons) is in the language set by the config key
+"ui_language" (de, en, es, fr; see i18n.py). It changes with set_config {config: {ui_language}} and is
+reported back as config.ui_language in the "config" and "status_info" events.
 """
 import argparse
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -37,6 +42,7 @@ import checks
 import downloads
 import history
 import gpu
+import i18n
 import languages
 import local_engine
 import ocr
@@ -44,6 +50,7 @@ import phrases
 import prompting
 import providers
 import textutil
+from i18n import tr
 from local_engine import EngineError
 from vector_index import VectorIndex
 
@@ -57,6 +64,7 @@ def emit(message: dict) -> None:
 
 
 DEFAULT_CONFIG = {
+    "ui_language": i18n.DEFAULT,  # language of the interface and of every message: de, en, es, fr
     "engine": {
         "default": "local",
         "model": "medium",
@@ -74,6 +82,7 @@ DEFAULT_CONFIG = {
         "openai_api": {"enabled": False, "base_url": "https://api.openai.com/v1", "model": "",
                        "key": "", "key_env": "OPENAI_API_KEY"},
         "chatgpt_sub": {"enabled": False, "model": "", "command": "codex"},
+        "openrouter": {"enabled": False, "model": "", "key": "", "key_env": "OPENROUTER_API_KEY"},
     },
     "languages": {"enabled": ["de", "en"]},
     "style": "neutral",
@@ -83,6 +92,7 @@ DEFAULT_CONFIG = {
     "history": {"enabled": True, "limit": 500},
     "clarify": False,   # ask before translating a short ambiguous text
     "thorough": False,  # second pass: the model reviews and corrects its own draft
+    "senses": True,     # single words or word lists: list common meanings with examples
 }
 
 MODEL_PREFERENCES = {
@@ -94,6 +104,53 @@ SIZES = ("small", "medium", "large")
 CONTEXT_CHARS = 600
 CLARIFY_CHARS = 300   # only short texts are checked for ambiguity
 EXPLAIN_CHARS = 1500
+
+
+def word_objects(raw: str) -> dict:
+    """Collect every {"word": ...} object from a model answer, even when the list around them is broken."""
+    data = prompting.parse_json(raw)
+    if isinstance(data, dict) and isinstance(data.get("words"), list):
+        return data
+    decoder = json.JSONDecoder()
+    found = []
+    for match in re.finditer(r'\{\s*"word"\s*:', raw):
+        try:
+            obj, _ = decoder.raw_decode(raw, match.start())
+        except ValueError:
+            continue
+        if isinstance(obj, dict):
+            found.append(obj)
+    return {"words": found}
+
+
+def clean_senses(data, words: list[str]) -> list[dict]:
+    """Keep well-formed sense rows from the model's answer: at most 4 senses per word, words in input order."""
+    rows = data.get("words") if isinstance(data, dict) else None
+    found = {}
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        word = str(row.get("word") or "").strip()
+        senses = []
+        for sense in row.get("senses") or []:
+            if not isinstance(sense, dict):
+                continue
+            item = {key: str(sense.get(key) or "").strip()[:200]
+                    for key in ("translation", "meaning", "example", "example_translation")}
+            if item["translation"]:
+                senses.append(item)
+        if word and senses:
+            found.setdefault(word.casefold(), {"word": word, "senses": senses[:4]})
+    # The model may change spelling or case; fall back to the position when a word is not found by name.
+    ordered = []
+    for index, word in enumerate(words):
+        entry = found.pop(word.casefold(), None)
+        if entry is None and isinstance(rows, list) and index < len(rows) and len(rows) == len(words):
+            row = rows[index]
+            entry = found.pop(str(row.get("word") or "").strip().casefold(), None) if isinstance(row, dict) else None
+        if entry:
+            ordered.append({"word": word, "senses": entry["senses"]})
+    return ordered
 
 
 def deep_merge(base: dict, override: dict) -> dict:
@@ -127,6 +184,7 @@ class Sidecar:
         self.server_lock = threading.Lock()
         self.unload_timer: threading.Timer | None = None
         self.downloader = downloads.Downloader(local_engine.data_dir(), emit)
+        i18n.set_language(self.config()["ui_language"])
         self.sync_index()
 
     def _load_packs(self):
@@ -145,6 +203,7 @@ class Sidecar:
 
     def config(self) -> dict:
         cfg = deep_merge(DEFAULT_CONFIG, self._stored())
+        cfg["ui_language"] = i18n.normalize(cfg.get("ui_language"))
         enabled = [c for c in cfg["languages"].get("enabled") or [] if c in languages.CATALOG]
         cfg["languages"]["enabled"] = list(dict.fromkeys(enabled)) if len(set(enabled)) >= 2 else ["de", "en"]
         return cfg
@@ -153,7 +212,9 @@ class Sidecar:
         stored = deep_merge(self._stored(), patch)
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         self.config_path.write_text(json.dumps(stored, ensure_ascii=False, indent=2), encoding="utf-8")
-        return self.config()
+        cfg = self.config()
+        i18n.set_language(cfg["ui_language"])
+        return cfg
 
     def public_config(self) -> dict:
         """The config for the UI: stored keys are replaced by a flag."""
@@ -171,14 +232,14 @@ class Sidecar:
             path = Path(configured)
             if path.is_file():
                 return path
-            raise EngineError("model_missing", f"Modelldatei fehlt: {configured}", size=size)
+            raise EngineError("model_missing", tr("Modelldatei fehlt: {path}", path=configured), size=size)
         available = local_engine.list_models(self.app_dir)
         for needle in MODEL_PREFERENCES.get(size, []):
             for model in available:
                 if needle in model["name"].lower():
                     return Path(model["path"])
-        raise EngineError("model_missing", f"Kein Modell für die Größe '{size}' gefunden. In den Einstellungen "
-                                           "lässt sich eine Modelldatei auswählen.", size=size)
+        raise EngineError("model_missing", tr("Kein Modell für die Größe '{size}' gefunden. In den Einstellungen "
+                                              "lässt sich eine Modelldatei auswählen.", size=size), size=size)
 
     # ---------- status ----------
     def status(self) -> dict:
@@ -228,7 +289,7 @@ class Sidecar:
                              "phrases": len(self.book._index.get(code, {}))}
                             for code in languages.CATALOG],
             },
-            "styles": [{"id": key, "label": value[0]} for key, value in prompting.STYLES.items()],
+            "styles": [{"id": key, "label": tr(value[0])} for key, value in prompting.STYLES.items()],
             "packs": [pack.info() for pack in self.book.packs.values()],
             "memory": self.index.info() if full["memory"].get("vector") else {"state": "off", "count": 0, "error": ""},
             "downloads": self.downloader.state(),
@@ -261,14 +322,14 @@ class Sidecar:
             emit({"id": req_id, "event": "status", "stage": "vram_check"})
             state = gpu.vram_mb(cfg["gpu_index"])
             if state is None:
-                raise EngineError("no_gpu", "Keine NVIDIA-Grafikkarte abfragbar (nvidia-smi).")
+                raise EngineError("no_gpu", tr("Keine NVIDIA-Grafikkarte abfragbar (nvidia-smi)."))
             need = local_engine.required_vram_mb(model_path, cfg["context_tokens"])
             available = state["free"] - cfg["vram_reserve_mb"]
             if available < need:
                 raise EngineError(
                     "vram_insufficient",
-                    f"Zu wenig freier VRAM: {state['free']} MB frei, benötigt werden {need} MB "
-                    f"plus {cfg['vram_reserve_mb']} MB Reserve.",
+                    tr("Zu wenig freier VRAM: {free} MB frei, benötigt werden {need} MB plus {reserve} MB Reserve.",
+                       free=state["free"], need=need, reserve=cfg["vram_reserve_mb"]),
                     free_mb=state["free"], need_mb=need, reserve_mb=cfg["vram_reserve_mb"],
                 )
 
@@ -387,16 +448,22 @@ class Sidecar:
                    for o in data.get("options") or [] if isinstance(o, dict)]
         options = [o for o in options if o["label"] and o["meaning"]][:3]
         question = str(data.get("question") or "").strip()[:200]
-        return (question or "Was ist gemeint?", options) if len(options) >= 2 else None
+        return (question or tr("Was ist gemeint?"), options) if len(options) >= 2 else None
+
+    def _senses(self, session, words: list[str], src_name: str, tgt_name: str) -> list[dict]:
+        """Common meanings of single words with short examples; an unusable answer gives an empty list."""
+        raw = "".join(session["run"](prompting.senses_messages(words, src_name, tgt_name), 220 * len(words) + 200))
+        return clean_senses(word_objects(raw), words)
 
     def explain(self, req: dict) -> None:
         req_id = req.get("id")
         try:
             text, translation = (req.get("text") or "").strip(), (req.get("translation") or "").strip()
             if not text or not translation:
-                raise EngineError("nothing_to_explain", "Es gibt noch keine Übersetzung zum Erklären.")
+                raise EngineError("nothing_to_explain", tr("Es gibt noch keine Übersetzung zum Erklären."))
             if len(text) > EXPLAIN_CHARS:
-                raise EngineError("too_long", f"Erklären geht nur für Texte bis {EXPLAIN_CHARS} Zeichen.")
+                raise EngineError("too_long", tr("Erklären geht nur für Texte bis {limit} Zeichen.",
+                                                     limit=EXPLAIN_CHARS))
             full = self.config()
             source, target = req.get("source"), req.get("target")
             if source not in languages.CATALOG or target not in languages.CATALOG:
@@ -409,13 +476,17 @@ class Sidecar:
             finally:
                 self._close(req_id, session, full["engine"])
             if not data:
-                raise EngineError("explain_failed", "Das Modell hat keine verwertbare Erklärung geliefert.")
+                raise EngineError("explain_failed", tr("Das Modell hat keine verwertbare Erklärung geliefert."))
 
             def rows(key, first):
                 found = []
                 for row in data.get(key) or []:
                     if isinstance(row, dict) and str(row.get(first) or "").strip():
-                        found.append({first: str(row[first]).strip(), "note": str(row.get("note") or "").strip()})
+                        item = {first: str(row[first]).strip(), "note": str(row.get("note") or "").strip()}
+                        example = str(row.get("example") or "").strip()
+                        if key == "alternatives" and example and example != item[first]:
+                            item["example"] = example[:200]
+                        found.append(item)
                 return found[:4]
             emit({"id": req_id, "event": "explanation", "summary": str(data.get("summary") or "").strip(),
                   "alternatives": rows("alternatives", "text"), "notes": rows("notes", "source"),
@@ -484,6 +555,7 @@ class Sidecar:
             done_text = ""
             used, problems = {}, []
             review = {"changed": 0, "issues": []}
+            senses = []
             previous = None
             closed = False
             try:
@@ -541,6 +613,12 @@ class Sidecar:
                     if len(chunks) > 1:
                         emit({"id": req_id, "event": "progress", "chunk": number + 1, "chunks": len(chunks)})
                     previous = (chunk[-CONTEXT_CHARS:], output[-CONTEXT_CHARS:])
+
+                # Single words or word lists have no context: show their common meanings with examples.
+                words = textutil.word_list(text) if req.get("senses", full.get("senses", True)) else None
+                if words and done_text.strip():
+                    emit({"id": req_id, "event": "status", "stage": "senses"})
+                    senses = self._senses(session, words, src_name, tgt_name)
             finally:
                 if not closed:
                     self._close(req_id, session, cfg)
@@ -551,6 +629,8 @@ class Sidecar:
                     "seconds": round(time.monotonic() - started, 2)}
             if thorough:
                 done["review"] = review
+            if senses:
+                done["senses"] = senses
             if full["history"].get("enabled") and req.get("history", True):
                 done["history_id"] = self.history.add(
                     limit=int(full["history"].get("limit") or 500), source=source, target=target,
@@ -571,24 +651,31 @@ class Sidecar:
         if req.get("url"):
             url = str(req["url"])
             if not url.lower().startswith("https://"):
-                raise phrases.PackError("Sprachpakete werden nur über https:// geladen.")
+                raise phrases.PackError(tr("Sprachpakete werden nur über https:// geladen."))
+            # either one .zip, or the manifest.json of a pack folder with phrases.json beside it
+            base = url.split("?", 1)[0].split("#", 1)[0]
+            folder_pack = base.lower().endswith("/manifest.json")
+            wanted = ({"manifest.json": url, "phrases.json": base[:-len("manifest.json")] + "phrases.json"}
+                      if folder_pack else {"pack.zip": url})
             with tempfile.TemporaryDirectory(prefix="turing-translate-") as work:
-                archive = Path(work) / "pack.zip"
-                try:
-                    with urllib.request.urlopen(url, timeout=30) as resp:
-                        data = resp.read(phrases.MAX_PACK_BYTES + 1)
-                except (OSError, ValueError) as err:
-                    raise phrases.PackError(f"Download fehlgeschlagen: {err}")
-                if len(data) > phrases.MAX_PACK_BYTES:
-                    raise phrases.PackError("Das Sprachpaket ist zu groß.")
-                archive.write_bytes(data)
-                pack_id = phrases.install_pack(archive, target_dir)
+                for name, address in wanted.items():
+                    try:
+                        with urllib.request.urlopen(address, timeout=30) as resp:
+                            data = resp.read(phrases.MAX_PACK_BYTES + 1)
+                    except (OSError, ValueError) as err:
+                        if name == "phrases.json":  # a pack may consist of its manifest alone
+                            continue
+                        raise phrases.PackError(tr("Download fehlgeschlagen: {error}", error=err))
+                    if len(data) > phrases.MAX_PACK_BYTES:
+                        raise phrases.PackError(tr("Das Sprachpaket ist zu groß."))
+                    (Path(work) / name).write_bytes(data)
+                pack_id = phrases.install_pack(Path(work) if folder_pack else Path(work) / "pack.zip", target_dir)
         else:
             source = Path(str(req.get("path") or ""))
             if source.name == "manifest.json":
                 source = source.parent
             if not source.exists():
-                raise phrases.PackError("Die gewählte Datei wurde nicht gefunden.")
+                raise phrases.PackError(tr("Die gewählte Datei wurde nicht gefunden."))
             pack_id = phrases.install_pack(source, target_dir)
         self._packs_changed()
         pack = self.book.packs.get(pack_id)
@@ -601,7 +688,7 @@ class Sidecar:
     def pack_remove(self, pack_id: str) -> None:
         pack = self.book.packs.get(pack_id)
         if not pack or pack.origin != "user":
-            raise phrases.PackError("Nur selbst installierte Sprachpakete lassen sich entfernen.")
+            raise phrases.PackError(tr("Nur selbst installierte Sprachpakete lassen sich entfernen."))
         for name in ("manifest.json", "phrases.json"):
             (pack.folder / name).unlink(missing_ok=True)
         try:
@@ -618,7 +705,7 @@ class Sidecar:
             with urllib.request.urlopen(url, timeout=20) as resp:
                 data = json.loads(resp.read(2_000_000).decode("utf-8"))
         except (OSError, ValueError) as err:
-            raise phrases.PackError(f"Paketliste nicht abrufbar: {err}")
+            raise phrases.PackError(tr("Paketliste nicht abrufbar: {error}", error=err))
         rows = data.get("packs", []) if isinstance(data, dict) else data
         return [row for row in rows if isinstance(row, dict) and row.get("id") and row.get("url")]
 
@@ -645,7 +732,7 @@ class Sidecar:
             try:
                 path = Path(req.get("path") or "")
                 if not path.name or not path.parent.is_dir():
-                    raise ValueError("Kein gültiger Speicherort.")
+                    raise ValueError(tr("Kein gültiger Speicherort."))
                 if cmd == "history_export":
                     count = self.history.export(path, req.get("format") or path.suffix.lstrip(".").lower(),
                                                 bool(req.get("corrected_only")))
@@ -698,8 +785,10 @@ class Sidecar:
                 emit({"id": req_id, "event": "error", "code": "pack_failed", "message": str(err)})
         elif cmd == "provider_models":
             try:
-                cfg = self.config()["providers"]["openai_api"]
-                emit({"id": req_id, "event": "provider_models", "models": providers.openai_models(cfg)})
+                provider = "openrouter" if req.get("provider") == "openrouter" else "openai_api"
+                cfg = self.config()["providers"][provider]
+                lister = providers.openrouter_models if provider == "openrouter" else providers.openai_models
+                emit({"id": req_id, "event": "provider_models", "provider": provider, "models": lister(cfg)})
             except EngineError as err:
                 emit({"id": req_id, "event": "error", "code": err.code, "message": str(err)})
         elif cmd == "download":
@@ -718,7 +807,7 @@ class Sidecar:
             self.downloader.cancel()
             return False
         else:
-            emit({"id": req_id, "event": "error", "code": "unknown_command", "message": f"Unbekannter Befehl: {cmd}"})
+            emit({"id": req_id, "event": "error", "code": "unknown_command", "message": tr("Unbekannter Befehl: {cmd}", cmd=cmd)})
         return True
 
     def read_image(self, req: dict) -> None:
@@ -802,7 +891,7 @@ def main() -> None:
             try:
                 req = json.loads(line)
             except ValueError:
-                emit({"event": "error", "code": "bad_json", "message": "Ungültige Anfrage"})
+                emit({"event": "error", "code": "bad_json", "message": tr("Ungültige Anfrage")})
                 continue
             if not sidecar.handle(req):
                 break
