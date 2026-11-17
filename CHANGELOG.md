@@ -2,6 +2,26 @@
 
 Alle nennenswerten Änderungen an diesem Projekt.
 
+## 0.4.0 – 2026-11-17
+
+### Neu
+
+- Screenshots einfügen (Strg+V oder „Einfügen“): der Text wird mit der Texterkennung von Windows
+  gelesen und übersetzt.
+- Oberfläche auf Deutsch, Englisch, Spanisch und Französisch, umschaltbar in der Titelleiste und in
+  den Einstellungen.
+- Litauisch und Lettisch als Übersetzungssprachen.
+- Einzelne Wörter und Wortlisten bekommen mehrere Bedeutungen mit Beispielsätzen.
+- OpenRouter als eigener Anbieter mit Modellliste, Suche, Filter „nur kostenlose“ und Kostenanzeige.
+- Modellauswahl neben dem Anbieter im Hauptfenster.
+- Kurze Erklärungen (i-Symbole) zu Anbieter, Modell, Stil und weiteren Bedienelementen.
+
+### Geändert
+
+- Einstellungen neu geordnet: Sprachen, lokale Modelle, Anbieter im Internet, Fenster; mit
+  erklärenden Sätzen und Links zum Herunterladen von Modellen.
+- Der Verlauf lässt sich scrollen.
+
 ## 0.3.0 – 2026-11-13
 
 ### Neu
