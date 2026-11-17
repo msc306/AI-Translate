@@ -1,4 +1,4 @@
-"""Turing Translate sidecar: JSON lines on stdin/stdout, one request per line.
+"""AI Translate sidecar: JSON lines on stdin/stdout, one request per line.
 
 Requests carry "cmd" and "id"; every answer repeats the id and has an "event".
 The core uses the standard library only. ChromaDB (semantic phrase search) is optional.
@@ -657,7 +657,7 @@ class Sidecar:
             folder_pack = base.lower().endswith("/manifest.json")
             wanted = ({"manifest.json": url, "phrases.json": base[:-len("manifest.json")] + "phrases.json"}
                       if folder_pack else {"pack.zip": url})
-            with tempfile.TemporaryDirectory(prefix="turing-translate-") as work:
+            with tempfile.TemporaryDirectory(prefix="ai-translate-") as work:
                 for name, address in wanted.items():
                     try:
                         with urllib.request.urlopen(address, timeout=30) as resp:
@@ -875,7 +875,7 @@ def stdin_lines():
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--app-dir", default=str(Path(__file__).resolve().parent.parent))
-    default_config = Path(os.environ.get("APPDATA") or Path.home()) / "TuringTranslate" / "config.json"
+    default_config = Path(os.environ.get("APPDATA") or Path.home()) / "AITranslate" / "config.json"
     parser.add_argument("--config", default=str(default_config))
     args = parser.parse_args()
 

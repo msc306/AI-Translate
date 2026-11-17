@@ -38,7 +38,7 @@ def bench(model: dict) -> None:
     print(f"\n=== {model['name']}  ({model['size_mb']} MB, estimated need {local_engine.required_vram_mb(path, 4096)} MB) ===")
     cancel = threading.Event()
     t0 = time.monotonic()
-    server = local_engine.LlamaServer(exe, dll_dirs, path, 4096, Path(tempfile.gettempdir()) / "turing-translate-bench.log")
+    server = local_engine.LlamaServer(exe, dll_dirs, path, 4096, Path(tempfile.gettempdir()) / "ai-translate-bench.log")
     try:
         server.wait_ready(cancel)
         load = time.monotonic() - t0

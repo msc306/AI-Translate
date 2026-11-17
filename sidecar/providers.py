@@ -280,7 +280,7 @@ def openrouter(messages, cfg, cancel, usage):
     model = (cfg.get("model") or "").strip()
     if not model:
         raise EngineError("api_failed", tr("Für OpenRouter ist kein Modell eingestellt."))
-    headers = {"authorization": f"Bearer {key}", "x-title": "Turing Translate"}
+    headers = {"authorization": f"Bearer {key}", "x-title": "AI Translate"}
     body = {"model": model, "messages": messages, "stream": True, "usage": {"include": True}}
     tokens_in, tokens_out = usage["input_tokens"], usage["output_tokens"]
     cost = yield from _chat_stream(OPENROUTER_BASE + "/chat/completions", headers, body, cancel, usage)
@@ -361,7 +361,7 @@ def claude_sub(messages, cfg, cancel, usage):
     system, turns = _split(messages)
     # Without the key the CLI uses the subscription login instead of billing the API account.
     env = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
-    with tempfile.TemporaryDirectory(prefix="turing-translate-") as work:
+    with tempfile.TemporaryDirectory(prefix="ai-translate-") as work:
         prompt_file = Path(work) / "system.txt"
         prompt_file.write_text(system, encoding="utf-8")
         args = [exe, "-p", "--output-format", "stream-json", "--include-partial-messages", "--verbose",
@@ -416,7 +416,7 @@ def chatgpt_sub(messages, cfg, cancel, usage):
                                             "@openai/codex) und einmal `codex login` ausführen."))
     system, turns = _split(messages)
     prompt = f"{system}\n\n<text_to_translate>\n{turns[-1]['content']}\n</text_to_translate>"
-    with tempfile.TemporaryDirectory(prefix="turing-translate-") as work:
+    with tempfile.TemporaryDirectory(prefix="ai-translate-") as work:
         answer = Path(work) / "answer.txt"
         args = [exe, "exec", "--skip-git-repo-check", "--ephemeral", "--sandbox", "read-only",
                 "--output-last-message", str(answer)]

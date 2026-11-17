@@ -1,87 +1,85 @@
-# AI-Translate
+# AI Translate
 
-**Turing Translate** is a small translator for the Windows desktop that docks to the screen edge.
-It translates with a local model on your own graphics card or with an online provider, knows
-idioms through a phrase memory, and frees the graphics memory again after every translation.
-The interface and the rest of this document are German.
+**AI Translate** is a small translator for the Windows desktop that docks to the screen edge like a
+second taskbar. It translates with a model on your own graphics card or through an online provider,
+knows idioms through a phrase memory, and frees the graphics memory again after every translation.
+The interface is available in German, English, Spanish and French.
 
-**Turing Translate** ist ein kleiner Übersetzer für den Windows-Desktop, der am Bildschirmrand
-andockt wie eine zweite Taskleiste. Er übersetzt mit einem Modell auf der eigenen Grafikkarte oder
-über einen Anbieter im Internet.
+**Contents:** [Features](#features) · [Install](#install) · [Requirements](#requirements) ·
+[Run from source](#run-from-source) · [Build the installer](#build-the-installer) ·
+[Usage](#usage) · [Providers](#providers) · [Language packs](#language-packs) ·
+[Use as an MCP server](#use-as-an-mcp-server) · [Tests](#tests) · [Structure](#structure)
 
-**Inhalt:** [Was er kann](#was-er-kann) · [Installieren](#installieren) ·
-[Voraussetzungen](#voraussetzungen) · [Aus dem Quellcode starten](#aus-dem-quellcode-starten) ·
-[Installer bauen](#installer-bauen) · [Bedienung](#bedienung) ·
-[Anbieter](#anbieter) · [Sprachpakete](#sprachpakete) ·
-[Als MCP-Server nutzen](#als-mcp-server-nutzen) · [Tests](#tests) · [Aufbau](#aufbau)
+## Features
 
-## Was er kann
+- **Translate locally or online.** Locally with a GGUF model (small, medium, large – each freely
+  selectable), or through Claude, OpenRouter or OpenAI-compatible services.
+- **Translate screenshots.** A pasted image is read with the Windows text recogniser; the recognised
+  text lands in the input field and is translated like typed text. The image never leaves the PC.
+- **Subscription instead of an API key.** A Claude subscription (Pro/Max) can be used through Claude
+  Code, a ChatGPT subscription through the Codex CLI. API keys work as well.
+- **Phrase memory.** Idioms are translated by meaning ("Ich verstehe nur Bahnhof" → "It's all Greek
+  to me"). Your own entries and corrections are kept. A vector database (ChromaDB) also finds entries
+  that are only worded similarly; the app shows which entries went into a translation.
+- **Many languages.** 26 languages can be switched on in the settings; language packs with idioms can
+  be loaded from a file or an address.
+- **Interface in four languages.** German, English, Spanish or French, chosen in the title bar next to
+  the name or in the settings.
+- **Word meanings.** Single words and word lists get several meanings with example sentences.
+- **Style.** Neutral, formal, casual or literal.
+- **Output check.** Empty, untranslated or strikingly short/long results are retried once and
+  otherwise marked with a warning.
+- **History and export.** Translations are stored locally, can be searched and exported as CSV, JSON
+  or Markdown. Editing a translation in the result field or in the history saves a correction – and
+  one click turns it into a phrase that applies from the next translation on. Your own phrases can be
+  shared as a language pack.
+- **Explain.** On request the model justifies a translation, names alternatives and points out idioms
+  and false friends.
+- **Clarifying question.** If a short text is ambiguous ("The note was awful"), the translator asks
+  what is meant (can be switched off).
+- **Thorough mode.** The model reviews its draft in a second pass and improves it.
+- **Usable by other programs.** An MCP server offers translation as a tool.
+- **Careful with graphics memory.** Before loading, the app checks that enough is free; afterwards
+  the model is unloaded again.
 
-- **Lokal oder im Internet übersetzen.** Lokal mit einem GGUF-Modell (klein, mittel, groß – jeweils
-  frei wählbar), oder über Claude, OpenRouter bzw. OpenAI-kompatible Dienste.
-- **Screenshots übersetzen.** Ein eingefügtes Bild wird mit der Texterkennung von Windows gelesen;
-  der erkannte Text landet im Eingabefeld und wird wie getippter Text übersetzt. Das Bild verlässt
-  den PC nicht.
-- **Abo statt API-Schlüssel.** Ein Claude-Abo (Pro/Max) lässt sich über das Programm Claude Code
-  nutzen, ein ChatGPT-Abo über die Codex-CLI. API-Schlüssel funktionieren ebenfalls.
-- **Phrasengedächtnis.** Redewendungen werden sinngemäß übersetzt („Ich verstehe nur Bahnhof“ →
-  „It's all Greek to me“). Eigene Einträge und Korrekturen werden gespeichert. Eine
-  Vektordatenbank (ChromaDB) findet auch Einträge, die nur ähnlich formuliert sind; die Anzeige
-  zeigt, welche Einträge in eine Übersetzung eingeflossen sind.
-- **Mehrere Sprachen.** 26 Sprachen lassen sich in den Einstellungen einschalten; Sprachpakete mit
-  Redewendungen können aus einer Datei oder von einer Adresse geladen werden.
-- **Oberfläche in vier Sprachen.** Deutsch, Englisch, Spanisch oder Französisch, wählbar in der
-  Titelleiste neben dem Namen oder in den Einstellungen.
-- **Stilwahl.** Neutral, förmlich, locker oder wörtlich.
-- **Prüfung der Ausgabe.** Leere, unübersetzte oder auffällig kurze/lange Ergebnisse werden einmal
-  neu versucht und sonst mit einem Hinweis markiert.
-- **Verlauf und Export.** Übersetzungen werden lokal gespeichert, lassen sich durchsuchen und als
-  CSV, JSON oder Markdown ausgeben. Wer eine Übersetzung im Ergebnisfeld oder im Verlauf ändert,
-  speichert damit eine Korrektur – und kann sie mit einem Klick als Phrase übernehmen, die ab der
-  nächsten Übersetzung gilt. Eigene Phrasen lassen sich als Sprachpaket weitergeben.
-- **Erklären.** Auf Wunsch begründet das Modell eine Übersetzung, nennt Alternativen und weist auf
-  Redewendungen und falsche Freunde hin.
-- **Rückfrage bei Mehrdeutigkeit.** Ist ein kurzer Text mehrdeutig („Der Ton war furchtbar“), fragt
-  der Übersetzer nach, was gemeint ist (abschaltbar).
-- **Gründlich-Modus.** Das Modell prüft seinen Entwurf in einem zweiten Durchgang und verbessert ihn.
-- **Für andere Programme nutzbar.** Ein MCP-Server stellt das Übersetzen als Werkzeug bereit.
-- **Schonender Umgang mit dem Grafikspeicher.** Vor dem Laden wird geprüft, ob genug frei ist;
-  danach wird das Modell wieder entladen.
+## Install
 
-## Installieren
+1. Download `AI.Translate_<version>_x64-setup.exe` from
+   [Releases](https://github.com/msc306/AI-Translate/releases) and run it. It installs for the
+   current user, no administrator rights are needed. Python is included.
+2. On first start the window shows **Getting started** as long as neither a local model nor a
+   provider is set up:
+   - **Download runtime and model** fetches the llama.cpp runtime (CUDA 12.4, about 680 MB) and the
+     small model Gemma 4 E2B (Apache-2.0, about 3.3 GB) into `%LOCALAPPDATA%\AITranslate`. Every
+     file is verified by its checksum; an interrupted download resumes next time, and a stalled one
+     restarts by itself. After that the app translates without internet. The very first translation
+     can take a good minute because Windows reads the model from disk for the first time; after that
+     a sentence takes a few seconds.
+   - Without an NVIDIA graphics card, or if you prefer not to download anything, choose an online
+     provider in the settings.
+3. Larger models (medium, large) can be chosen as a GGUF file in the settings.
 
-1. Unter [Releases](https://github.com/msc306/AI-Translate/releases) die Datei
-   `Turing.Translate_<Version>_x64-setup.exe` herunterladen und starten. Sie installiert für den
-   angemeldeten Benutzer, Administratorrechte sind nicht nötig. Python ist enthalten.
-2. Beim ersten Start zeigt das Fenster **Erste Schritte**, solange weder ein lokales Modell noch ein
-   Anbieter eingerichtet ist:
-   - **Laufzeit und Modell herunterladen** lädt die llama.cpp-Laufzeit (CUDA 12.4, ca. 680 MB) und
-     das kleine Modell Gemma 4 E2B (Apache-2.0, ca. 3,3 GB) nach `%LOCALAPPDATA%\TuringTranslate`.
-     Jede Datei wird anhand ihrer Prüfsumme kontrolliert; ein abgebrochener Download setzt beim
-     nächsten Mal fort; bleibt die Verbindung hängen, startet der Download von selbst neu. Danach
-     übersetzt das Programm ohne Internet. Die allererste Übersetzung kann gut eine Minute dauern,
-     weil Windows das Modell erstmals von der Platte liest; danach dauert ein Satz wenige Sekunden.
-   - Ohne NVIDIA-Grafikkarte, oder wer nichts herunterladen möchte, wählt in den Einstellungen einen
-     Anbieter im Internet.
-3. Größere Modelle (mittel, groß) lassen sich in den Einstellungen als GGUF-Datei auswählen.
+The installer is not signed, so Windows SmartScreen asks on first start ("More info" → "Run
+anyway"). The checksum of every release file is listed in the release notes. In the installed
+version the phrase memory matches by wording; the similarity search with ChromaDB is available when
+running from source.
 
-Der Installer ist nicht signiert; Windows SmartScreen fragt deshalb beim ersten Start nach
-(„Weitere Informationen“ → „Trotzdem ausführen“). Die Prüfsumme jeder Release-Datei steht in den
-Release-Notizen. Das Phrasengedächtnis sucht in der installierten Fassung nach Wortlaut; die
-Ähnlichkeitssuche mit ChromaDB gibt es in der Fassung aus dem Quellcode.
+**Upgrading from "Turing Translate" (0.4.0 and earlier):** the app was renamed. On first start
+AI Translate takes over the settings, history, runtime and models of the old version. The old
+version can then be uninstalled under Windows Settings → Apps.
 
-## Voraussetzungen
+## Requirements
 
-- Windows 10/11 (64 Bit)
-- Für lokale Modelle: eine NVIDIA-Grafikkarte mit aktuellem Treiber (für das kleine Modell reichen
-  etwa 5 GB Grafikspeicher). Ist [LM Studio](https://lmstudio.ai) installiert, werden dessen
-  llama.cpp-Laufzeit und Modelle automatisch gefunden.
-- Für die Anbieter im Internet je nach Wahl: ein API-Schlüssel,
-  [Claude Code](https://claude.com/claude-code) (angemeldet mit dem Abo) oder die Codex-CLI.
-- Nur für den Start aus dem Quellcode: [Node.js](https://nodejs.org), [Rust](https://rustup.rs)
-  und [uv](https://docs.astral.sh/uv/).
+- Windows 10/11 (64-bit)
+- For local models: an NVIDIA graphics card with a current driver (about 5 GB of graphics memory is
+  enough for the small model). If [LM Studio](https://lmstudio.ai) is installed, its llama.cpp
+  runtime and models are found automatically.
+- For the online providers, depending on the choice: an API key,
+  [Claude Code](https://claude.com/claude-code) (signed in with the subscription) or the Codex CLI.
+- Only for running from source: [Node.js](https://nodejs.org), [Rust](https://rustup.rs) and
+  [uv](https://docs.astral.sh/uv/).
 
-## Aus dem Quellcode starten
+## Run from source
 
 ```powershell
 git clone https://github.com/msc306/AI-Translate.git
@@ -90,114 +88,111 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 npm run dev
 ```
 
-`setup.ps1` legt die Python-Umgebung `.venv` an, installiert ChromaDB für das Phrasengedächtnis
-(mit `-NoMemory` überspringen) und die Node-Pakete. GGUF-Modelle gehören in den Ordner `models\`
-oder werden in den Einstellungen über „Durchsuchen“ gewählt.
+`setup.ps1` creates the Python environment `.venv`, installs ChromaDB for the phrase memory (skip
+with `-NoMemory`) and the Node packages. GGUF models go into the `models\` folder or are chosen in
+the settings with "Browse".
 
-Beim ersten Start mit Phrasengedächtnis wird einmalig ein kleines Sprachmodell für die Suche
-geladen (ca. 120 MB). Danach arbeitet die Suche ohne Internet.
+On the first start with phrase memory a small embedding model for the search is downloaded once
+(about 120 MB). After that the search works offline.
 
-`npm run build` erzeugt `src-tauri\target\release\turing-translate.exe`. Diese Fassung erwartet die
-Ordner `sidecar\`, `packs\` und `.venv\` weiterhin im Projektordner.
+`npm run build` produces `src-tauri\target\release\ai-translate.exe`. This build still expects the
+folders `sidecar\`, `packs\` and `.venv\` in the project folder.
 
-## Installer bauen
+## Build the installer
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\build-installer.ps1
 ```
 
-Das Skript stellt in `build\bundle` den Sidecar (ohne Tests), die Sprachpakete und das offizielle
-Embeddable-Python von python.org zusammen, prüft, dass der Sidecar damit startet, und baut mit
-`src-tauri\tauri.bundle.conf.json` einen NSIS-Installer nach
-`src-tauri\target\release\bundle\nsis\`.
+The script stages the sidecar (without tests), the language packs and the official embeddable
+Python from python.org in `build\bundle`, checks that the sidecar starts with it, and builds an NSIS
+installer with `src-tauri\tauri.bundle.conf.json` into `src-tauri\target\release\bundle\nsis\`.
 
-## Bedienung
+## Usage
 
-- `Strg+Alt+T` blendet das Fenster ein und aus, `Strg+Alt+U` übersetzt den Inhalt der
-  Zwischenablage. Das Programm sitzt außerdem im Infobereich der Taskleiste.
-- Screenshots: Bildausschnitt mit `Win+Umschalt+S` aufnehmen und mit `Strg+V` einfügen (oder
-  „Einfügen“ bzw. `Strg+Alt+U`). Die Texterkennung nutzt die in Windows installierten Sprachen. Fehlt
-  die Sprache des Bildes, liest sie mit einer anderen und einzelne Zeichen können falsch sein;
-  nachinstallieren lässt sie sich unter Einstellungen → Zeit und Sprache → Sprache und Region.
-- Quell- und Zielsprache, Anbieter, Modellgröße und Stil stehen über dem Eingabefeld. Steht die
-  Quellsprache auf „automatisch“, wird die Richtung erkannt.
-- Das Ergebnis lässt sich direkt im Ergebnisfeld ändern. Die Änderung wird als Korrektur im
-  Verlauf gespeichert und lässt sich als Phrase übernehmen.
-- In den Einstellungen (Zahnrad) lassen sich Sprachen, lokale Modelle, Anbieter, Fensterplatz und das
-  Phrasengedächtnis einrichten. Unter jeder Modellgröße führt ein Knopf zu einer Seite, auf der es ein
-  passendes Modell zum Herunterladen gibt.
-- Einstellungen, eigene Phrasen und der Verlauf liegen unter `%APPDATA%\TuringTranslate\`.
+- `Ctrl+Alt+T` shows and hides the window, `Ctrl+Alt+U` translates the clipboard. The app also sits
+  in the notification area of the taskbar.
+- Screenshots: capture an area with `Win+Shift+S` and paste it with `Ctrl+V` (or "Paste" or
+  `Ctrl+Alt+U`). Text recognition uses the languages installed in Windows. If the language of the
+  image is missing, another one is used and single characters may be wrong; add it under Settings →
+  Time & language → Language & region.
+- Source and target language, provider, model and style sit above the input field. With the source
+  language on "automatic" the direction is detected.
+- The result can be edited directly in the result field. The change is stored as a correction in the
+  history and can be adopted as a phrase.
+- The settings (gear icon) cover languages, local models, providers, window position and the phrase
+  memory. Below each model size a button leads to a page where a suitable model can be downloaded.
+- Settings, your own phrases and the history are stored in `%APPDATA%\AITranslate\`.
 
-## Anbieter
+## Providers
 
-| Anbieter | Braucht | Stand |
+| Provider | Needs | Status |
 |---|---|---|
-| Lokal | GGUF-Modell, NVIDIA-Grafikkarte | getestet |
-| Claude (Abo) | Claude Code, angemeldet | getestet |
-| Claude (API-Schlüssel) | Schlüssel oder `ANTHROPIC_API_KEY` | umgesetzt, noch nicht mit echtem Schlüssel geprüft |
-| OpenAI-kompatibel | Schlüssel oder `OPENAI_API_KEY`; die Adresse ist einstellbar, damit gehen auch andere Dienste und lokale Server | umgesetzt, noch nicht mit echtem Schlüssel geprüft |
-| OpenRouter | Schlüssel oder `OPENROUTER_API_KEY`; Modellliste mit Suche, Preisen und Filter „nur kostenlose“, Kosten je Modell | umgesetzt, Modellliste live geprüft, Übersetzen noch nicht mit echtem Schlüssel geprüft |
-| ChatGPT (Abo) | Codex-CLI, angemeldet | umgesetzt, noch nicht mit echtem Abo geprüft |
+| Local | GGUF model, NVIDIA graphics card | tested |
+| Claude (subscription) | Claude Code, signed in | tested |
+| Claude (API key) | key or `ANTHROPIC_API_KEY` | implemented, not yet checked with a real key |
+| OpenAI-compatible | key or `OPENAI_API_KEY`; the address is configurable, so other services and local servers work too | implemented, not yet checked with a real key |
+| OpenRouter | key or `OPENROUTER_API_KEY`; model list with search, prices and a "free only" filter, cost per model | implemented, model list checked live, translation not yet checked with a real key |
+| ChatGPT (subscription) | Codex CLI, signed in | implemented, not yet checked with a real subscription |
 
-Schlüssel liegen nur in `%APPDATA%\TuringTranslate\config.json` oder in einer Umgebungsvariable.
-Bei den Anbietern im Internet verlässt der zu übersetzende Text den Rechner.
+Keys are stored only in `%APPDATA%\AITranslate\config.json` or in an environment variable. With the
+online providers the text to be translated leaves the computer.
 
-## Sprachpakete
+## Language packs
 
-Ein Paket ist ein Ordner oder eine ZIP-Datei mit zwei Dateien:
+A pack is a folder or ZIP file with two files:
 
 ```text
-manifest.json   {"id": "de-fr", "name": "Deutsch ↔ Französisch", "version": "1.0.0",
+manifest.json   {"id": "de-fr", "name": "German ↔ French", "version": "1.0.0",
                  "languages": [{"code": "de"}, {"code": "fr"}]}
 phrases.json    {"phrases": [{"de": ["Alles in Butter", "Alles im Lot"], "fr": "Tout va bien"}]}
 ```
 
-Jeder Eintrag nennt pro Sprache eine Formulierung oder eine Liste von Varianten. Installierte
-Pakete und eigene Einträge liegen unter `%APPDATA%\TuringTranslate\`; das mitgelieferte Paket
-`packs\de-en` wird nie verändert.
+Each entry gives one wording or a list of variants per language. Installed packs and your own
+entries are stored in `%APPDATA%\AITranslate\`; the bundled pack `packs\de-en` is never changed.
 
-## Als MCP-Server nutzen
+## Use as an MCP server
 
-Andere Programme, die das Model Context Protocol sprechen, können den Übersetzer als Werkzeug
-verwenden. Für Claude Code zum Beispiel (Pfad anpassen):
+Programs that speak the Model Context Protocol can use the translator as a tool. For Claude Code,
+for example (adjust the path):
 
 ```powershell
-claude mcp add turing-translate -- C:\Pfad\.venv\Scripts\python.exe C:\Pfad\sidecar\mcp_server.py
+claude mcp add ai-translate -- C:\path\.venv\Scripts\python.exe C:\path\sidecar\mcp_server.py
 ```
 
-Werkzeuge: `translate`, `explain_translation`, `list_languages`. Es gelten die Einstellungen und
-das Phrasengedächtnis der App; in den Verlauf wird dabei nichts geschrieben.
+Tools: `translate`, `explain_translation`, `list_languages`. The app's settings and phrase memory
+apply; nothing is written to the history.
 
 ## Tests
 
 ```powershell
-.venv\Scripts\python sidecar\tests\test_units.py            # ohne Grafikkarte und Internet
-.venv\Scripts\python sidecar\tests\test_units.py --vector   # zusätzlich die Vektordatenbank
-.venv\Scripts\python sidecar\tests\smoke_sidecar.py medium  # echte Übersetzungen
-.venv\Scripts\python sidecar\tests\live_modes.py medium     # Rückfrage, Gründlich, Erklären
-.venv\Scripts\python sidecar\tests\long_text.py medium      # langer Text, Absätze bleiben erhalten
-.venv\Scripts\python sidecar\tests\vram_guard.py            # Sperren für Grafikspeicher und Anbieter
+.venv\Scripts\python sidecar\tests\test_units.py            # no graphics card or internet needed
+.venv\Scripts\python sidecar\tests\test_units.py --vector   # also the vector database
+.venv\Scripts\python sidecar\tests\smoke_sidecar.py medium  # real translations
+.venv\Scripts\python sidecar\tests\live_modes.py medium     # clarifying question, thorough, explain
+.venv\Scripts\python sidecar\tests\long_text.py medium      # long text, paragraphs are kept
+.venv\Scripts\python sidecar\tests\vram_guard.py            # locks for graphics memory and providers
 .venv\Scripts\python sidecar\evals\run_eval.py --engine local --size medium --judge claude_sub
 ```
 
-Der letzte Befehl lässt das Testset in `sidecar\evals\cases.json` laufen (Redewendungen,
-Formatierung, falsche Freunde, eingeschleuste Befehle, Stil) und optional ein zweites Modell die
-Übersetzungen bewerten. Die Berichte landen in `sidecar\evals\results\`.
+The last command runs the test set in `sidecar\evals\cases.json` (idioms, formatting, false friends,
+injected instructions, style) and optionally lets a second model grade the translations. Reports are
+written to `sidecar\evals\results\`.
 
-## Aufbau
+## Structure
 
-| Ordner | Inhalt |
+| Folder | Contents |
 |---|---|
-| `src-tauri\` | Fenster, Andocken, Tastenkürzel, Zwischenablage (Rust, Tauri 2) |
-| `ui\` | Oberfläche (HTML, CSS, JavaScript ohne Build-Schritt) |
-| `sidecar\` | Übersetzungsdienst (Python; der Kern nutzt nur die Standardbibliothek) |
-| `packs\` | mitgeliefertes Sprachpaket |
-| `scripts\` | Bau des Installers |
+| `src-tauri\` | window, docking, hotkeys, clipboard (Rust, Tauri 2) |
+| `ui\` | interface (HTML, CSS, JavaScript without a build step) |
+| `sidecar\` | translation service (Python; the core uses only the standard library) |
+| `packs\` | bundled language pack |
+| `scripts\` | installer build |
 
-Die Oberfläche spricht mit dem Dienst über JSON-Zeilen; das Protokoll steht am Anfang von
-`sidecar\main.py`. Hinweise für die Arbeit am Code stehen in `CLAUDE.md`, die Änderungen je
-Version in `CHANGELOG.md`.
+The interface talks to the service in JSON lines; the protocol is described at the top of
+`sidecar\main.py`. Notes for working on the code are in `CLAUDE.md` (German), the changes per
+version in `CHANGELOG.md`.
 
-## Lizenz
+## License
 
-MIT, siehe `LICENSE`.
+MIT, see `LICENSE`.

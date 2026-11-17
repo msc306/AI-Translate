@@ -7,7 +7,7 @@
 # and then runs `tauri build` with src-tauri\tauri.bundle.conf.json on top of the normal config.
 # ChromaDB is not bundled; the phrase search then falls back to plain text matching.
 #
-# Result: src-tauri\target\release\bundle\nsis\Turing Translate_<version>_x64-setup.exe
+# Result: src-tauri\target\release\bundle\nsis\AI Translate_<version>_x64-setup.exe
 
 param(
     [string]$PythonVersion = "3.12.10",
@@ -24,8 +24,8 @@ function Need($name) {
 }
 Need node
 Need cargo
-if (Get-Process turing-translate -ErrorAction SilentlyContinue) {
-    throw "Turing Translate is running; close it first (the build replaces its executable)."
+if (Get-Process ai-translate -ErrorAction SilentlyContinue) {
+    throw "AI Translate is running; close it first (the build replaces its executable)."
 }
 
 Write-Host "Staging into $stage"

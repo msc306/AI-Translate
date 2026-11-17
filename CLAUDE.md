@@ -1,4 +1,4 @@
-# Turing Translate
+# AI Translate
 
 Desktop-Übersetzer für Windows: ein schmales Dock-Fenster (Tauri 2) mit einem Python-Sidecar, das lokal über
 `llama-server` oder über einen Cloud-Anbieter übersetzt. Ein Phrasengedächtnis sorgt dafür, dass Redewendungen
@@ -19,7 +19,7 @@ Oberfläche und Sidecar sprechen JSON-Zeilen über stdin/stdout (`sidecar/main.p
 Antworten sind Ereignisse mit `event`. Neue Funktionen bekommen einen Befehl im Sidecar und einen Aufruf in
 `ui/app.js`; die Rust-Seite reicht nur durch.
 
-Nutzerdaten liegen in `%APPDATA%\TuringTranslate\` (`config.json`, eigene Phrasen, Vektorindex, Verlauf),
+Nutzerdaten liegen in `%APPDATA%\AITranslate\` (`config.json`, eigene Phrasen, Vektorindex, Verlauf),
 nie im Repo.
 
 ## Regeln

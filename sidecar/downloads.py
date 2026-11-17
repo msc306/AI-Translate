@@ -60,7 +60,7 @@ CATALOG = {
 
 CHUNK = 1 << 20
 ATTEMPTS = 6
-USER_AGENT = "TuringTranslate"
+USER_AGENT = "AITranslate"
 STALLED = -1            # pseudo exit code: the .part file stopped growing
 STALL_SECONDS = 90      # no new byte for this long counts as a stalled transfer
 STALL_RESTARTS = 5

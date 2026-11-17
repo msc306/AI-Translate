@@ -215,7 +215,7 @@ def read_image(path: str = "", clipboard: bool = False, lang: str = "") -> dict:
     """
     if os.name != "nt":
         raise OcrError("unsupported")
-    with tempfile.TemporaryDirectory(prefix="turing-translate-ocr-") as work:
+    with tempfile.TemporaryDirectory(prefix="ai-translate-ocr-") as work:
         env = {**os.environ,
                "TT_OCR_PATH": str(Path(work) / "clipboard.png") if clipboard else str(path),
                "TT_OCR_CLIPBOARD": "1" if clipboard else "0",

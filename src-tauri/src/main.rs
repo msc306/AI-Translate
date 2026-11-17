@@ -284,6 +284,7 @@ fn set_ui_language(state: State<AppState>, lang: String) {
 }
 
 fn main() {
+    layout::migrate_old_folders();
     let (initial, first_run) = Layout::load();
 
     let app = tauri::Builder::default()
@@ -356,7 +357,7 @@ fn main() {
             *app.state::<AppState>().tray_items.lock().unwrap() =
                 vec![show_item.clone(), dock_item.clone(), quit_item.clone()];
             let mut tray = TrayIconBuilder::with_id("main")
-                .tooltip("Turing Translate")
+                .tooltip("AI Translate")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id().as_ref() {
@@ -410,7 +411,7 @@ fn main() {
             _ => {}
         })
         .build(tauri::generate_context!())
-        .expect("Fehler beim Start von Turing Translate");
+        .expect("Fehler beim Start von AI Translate");
 
     app.run(|app, event| {
         if let RunEvent::Exit = event {

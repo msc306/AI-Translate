@@ -39,7 +39,7 @@ JUDGE_SYSTEM = (
 
 
 def real_config() -> dict:
-    path = Path(os.environ.get("APPDATA") or Path.home()) / "TuringTranslate" / "config.json"
+    path = Path(os.environ.get("APPDATA") or Path.home()) / "AITranslate" / "config.json"
     try:
         stored = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):

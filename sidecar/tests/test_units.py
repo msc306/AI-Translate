@@ -504,7 +504,7 @@ def test_mcp():
         try:
             hello = ask("initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
                                        "clientInfo": {"name": "test", "version": "0"}})
-            expect("mcp initialize", hello["result"]["serverInfo"]["name"] == "turing-translate"
+            expect("mcp initialize", hello["result"]["serverInfo"]["name"] == "ai-translate"
                    and hello["result"]["protocolVersion"] == "2025-06-18", str(hello))
             child.stdin.write('{"jsonrpc": "2.0", "method": "notifications/initialized"}\n')
             tools = ask("tools/list", msg_id=2)["result"]["tools"]

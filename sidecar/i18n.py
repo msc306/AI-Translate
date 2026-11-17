@@ -499,10 +499,10 @@ CATALOG = {
         "es": "Formato desconocido: {fmt}",
         "fr": "Format inconnu : {fmt}",
     },
-    "Turing Translate: Verlauf": {
-        "en": "Turing Translate: History",
-        "es": "Turing Translate: Historial",
-        "fr": "Turing Translate : Historique",
+    "AI Translate: Verlauf": {
+        "en": "AI Translate: History",
+        "es": "AI Translate: Historial",
+        "fr": "AI Translate : Historique",
     },
     "Zeit": {
         "en": "Time",

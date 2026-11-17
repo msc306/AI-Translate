@@ -1,67 +1,74 @@
 # Changelog
 
-Alle nennenswerten Änderungen an diesem Projekt.
+All notable changes to this project.
+
+## 0.4.1 – 2026-11-17
+
+### Changed
+
+- The app is now called **AI Translate** (previously "Turing Translate"). On first start the
+  settings, history, runtime and models of the old version are taken over.
+- The project documentation on GitHub is in English.
 
 ## 0.4.0 – 2026-11-17
 
-### Neu
+### New
 
-- Screenshots einfügen (Strg+V oder „Einfügen“): der Text wird mit der Texterkennung von Windows
-  gelesen und übersetzt.
-- Oberfläche auf Deutsch, Englisch, Spanisch und Französisch, umschaltbar in der Titelleiste und in
-  den Einstellungen.
-- Litauisch und Lettisch als Übersetzungssprachen.
-- Einzelne Wörter und Wortlisten bekommen mehrere Bedeutungen mit Beispielsätzen.
-- OpenRouter als eigener Anbieter mit Modellliste, Suche, Filter „nur kostenlose“ und Kostenanzeige.
-- Modellauswahl neben dem Anbieter im Hauptfenster.
-- Kurze Erklärungen (i-Symbole) zu Anbieter, Modell, Stil und weiteren Bedienelementen.
+- Paste screenshots (Ctrl+V or "Paste"): the text is read with the Windows text recogniser and
+  translated.
+- Interface in German, English, Spanish and French, switchable in the title bar and in the settings.
+- Lithuanian and Latvian as translation languages.
+- Single words and word lists get several meanings with example sentences.
+- OpenRouter as its own provider with model list, search, "free only" filter and cost display.
+- Model choice next to the provider in the main window.
+- Short explanations (i icons) for provider, model, style and other controls.
 
-### Geändert
+### Changed
 
-- Einstellungen neu geordnet: Sprachen, lokale Modelle, Anbieter im Internet, Fenster; mit
-  erklärenden Sätzen und Links zum Herunterladen von Modellen.
-- Der Verlauf lässt sich scrollen.
+- Settings reordered: languages, local models, online providers, window; with explanatory sentences
+  and links for downloading models.
+- The history can be scrolled.
 
 ## 0.3.0 – 2026-11-13
 
-### Neu
+### New
 
-- Installer für Windows (per Benutzer, ohne Administratorrechte) mit eingebautem Python; wer das
-  Programm nur nutzen will, braucht weder Node.js noch Rust.
-- „Erste Schritte“ im Fenster, solange weder ein lokales Modell noch ein Anbieter eingerichtet ist.
-- Download der llama.cpp-Laufzeit und eines kleinen Modells aus dem Programm heraus, mit
-  Prüfsumme, Fortsetzen nach Abbruch und Fortschrittsanzeige. Hängt die Verbindung, startet der
-  Download nach 90 Sekunden ohne Fortschritt selbst neu.
+- Windows installer (per user, no administrator rights) with built-in Python; using the app needs
+  neither Node.js nor Rust.
+- "Getting started" in the window as long as neither a local model nor a provider is set up.
+- Download of the llama.cpp runtime and a small model from within the app, with checksum, resume
+  after interruption and progress display. If the connection stalls, the download restarts by itself
+  after 90 seconds without progress.
 
-### Geändert
+### Changed
 
-- Laufzeit und Modelle werden zusätzlich in `%LOCALAPPDATA%\TuringTranslate` gesucht.
-- Ist die gewählte Modellgröße nicht vorhanden, wird eine vorhandene gewählt.
+- The runtime and models are also searched in the local app data folder.
+- If the chosen model size is not available, an available one is chosen.
 
 ## 0.2.0 – 2026-11-13
 
-### Neu
+### New
 
-- Anbieter im Internet: Claude und OpenAI-kompatible Dienste per API-Schlüssel, Claude-Abo über
-  Claude Code, ChatGPT-Abo über die Codex-CLI. Anzeige von Tokens und Kosten.
-- Lokale Modelle für klein, mittel und groß frei wählbar, auch per „Durchsuchen“.
-- 24 Sprachen, Sprachpakete aus Datei oder Adresse installierbar.
-- Phrasengedächtnis mit Vektordatenbank (ChromaDB): findet auch ähnlich formulierte Einträge und
-  zeigt, welche Einträge verwendet wurden.
-- Stilwahl (neutral, förmlich, locker, wörtlich) und Zusammenhang über Abschnitte hinweg.
-- Prüfung der Ausgabe mit einem erneuten Versuch.
-- Verlauf mit Suche und Export (CSV, JSON, Markdown); Korrekturen lassen sich als Phrase speichern,
-  eigene Phrasen als Sprachpaket exportieren.
-- Erklär-Modus, Rückfrage bei Mehrdeutigkeit, Gründlich-Modus.
-- MCP-Server (`sidecar/mcp_server.py`).
-- Testset für die Übersetzungsqualität mit optionaler Bewertung durch ein zweites Modell.
+- Online providers: Claude and OpenAI-compatible services by API key, Claude subscription through
+  Claude Code, ChatGPT subscription through the Codex CLI. Token and cost display.
+- Local models for small, medium and large freely selectable, also via "Browse".
+- 24 languages; language packs installable from a file or an address.
+- Phrase memory with a vector database (ChromaDB): also finds similarly worded entries and shows
+  which entries were used.
+- Style choice (neutral, formal, casual, literal) and context across paragraphs.
+- Output check with one retry.
+- History with search and export (CSV, JSON, Markdown); corrections can be saved as phrases, your
+  own phrases exported as a language pack.
+- Explain mode, clarifying question for ambiguous text, thorough mode.
+- MCP server (`sidecar/mcp_server.py`).
+- Test set for translation quality with optional grading by a second model.
 
-### Geändert
+### Changed
 
-- Eigene Phrasen liegen jetzt im Benutzerordner; mitgelieferte Pakete werden nicht mehr verändert.
-- Die Python-Umgebung `.venv` des Projekts wird bevorzugt.
+- Your own phrases now live in the user folder; bundled packs are no longer modified.
+- The project's Python environment `.venv` is preferred.
 
 ## 0.1.0
 
-- Erste Fassung: angedocktes Fenster, lokale Übersetzung Deutsch ↔ Englisch mit Phrasenbuch,
-  Freigabe des Grafikspeichers nach jeder Übersetzung.
+- First version: docked window, local translation German ↔ English with phrase book, graphics memory
+  freed after every translation.

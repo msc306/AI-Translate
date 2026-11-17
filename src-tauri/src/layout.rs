@@ -46,8 +46,25 @@ impl Default for Layout {
     }
 }
 
+pub const DATA_FOLDER: &str = "AITranslate";
+/// Folder name used before the app was renamed; its contents move over once.
+const OLD_DATA_FOLDER: &str = "TuringTranslate";
+
 pub fn config_dir() -> PathBuf {
-    PathBuf::from(std::env::var("APPDATA").unwrap_or_else(|_| ".".into())).join("TuringTranslate")
+    PathBuf::from(std::env::var("APPDATA").unwrap_or_else(|_| ".".into())).join(DATA_FOLDER)
+}
+
+/// Renames the data folders of the old name (settings in APPDATA, runtime and models in
+/// LOCALAPPDATA) so nothing is lost or downloaded again. Runs before anything reads them.
+pub fn migrate_old_folders() {
+    for var in ["APPDATA", "LOCALAPPDATA"] {
+        let Ok(base) = std::env::var(var) else { continue };
+        let old = PathBuf::from(&base).join(OLD_DATA_FOLDER);
+        let new = PathBuf::from(&base).join(DATA_FOLDER);
+        if old.is_dir() && !new.exists() {
+            let _ = std::fs::rename(&old, &new);
+        }
+    }
 }
 
 fn file() -> PathBuf {

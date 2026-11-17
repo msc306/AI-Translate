@@ -1,4 +1,4 @@
-# Sets up Turing Translate for development on Windows.
+# Sets up AI Translate for development on Windows.
 # Run from the project folder:  powershell -ExecutionPolicy Bypass -File setup.ps1
 # Add -NoMemory to skip ChromaDB (the semantic phrase search).
 param([switch]$NoMemory)

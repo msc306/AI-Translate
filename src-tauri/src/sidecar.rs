@@ -21,7 +21,7 @@ pub struct Sidecar {
 /// Folder that holds sidecar\main.py and packs\ (the project or installation folder).
 /// The installer puts both next to the executable, a source checkout has them a few levels up.
 pub fn app_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("TURING_TRANSLATE_DIR") {
+    if let Ok(dir) = std::env::var("AI_TRANSLATE_DIR") {
         return PathBuf::from(dir);
     }
     let exe = std::env::current_exe().unwrap_or_default();
@@ -34,7 +34,7 @@ pub fn app_dir() -> PathBuf {
 }
 
 fn find_python(app_dir: &PathBuf) -> PathBuf {
-    if let Ok(path) = std::env::var("TURING_TRANSLATE_PYTHON") {
+    if let Ok(path) = std::env::var("AI_TRANSLATE_PYTHON") {
         return PathBuf::from(path);
     }
     // The project environment carries the optional packages (ChromaDB) for the phrase memory.

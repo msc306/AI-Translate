@@ -23,15 +23,15 @@ NO_WINDOW = 0x08000000
 
 
 def lmstudio_dir() -> Path:
-    return Path(os.environ.get("TURING_TRANSLATE_LMSTUDIO") or Path.home() / ".lmstudio")
+    return Path(os.environ.get("AI_TRANSLATE_LMSTUDIO") or Path.home() / ".lmstudio")
 
 
 def data_dir() -> Path:
     """Folder for the downloaded runtime and models: large files, kept out of the roaming profile."""
-    override = os.environ.get("TURING_TRANSLATE_DATA")
+    override = os.environ.get("AI_TRANSLATE_DATA")
     if override:
         return Path(override)
-    return Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "TuringTranslate"
+    return Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "AITranslate"
 
 
 class EngineError(Exception):

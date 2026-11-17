@@ -4,7 +4,7 @@ Speaks JSON-RPC over stdin/stdout (MCP stdio transport) and drives the normal si
 process, so the same engines, phrase memory and settings are used as in the app.
 
 Register it for example with:
-    claude mcp add turing-translate -- <path>\\.venv\\Scripts\\python.exe <path>\\sidecar\\mcp_server.py
+    claude mcp add ai-translate -- <path>\\.venv\\Scripts\\python.exe <path>\\sidecar\\mcp_server.py
 """
 import argparse
 import json
@@ -29,7 +29,7 @@ COMMON = {
 TOOLS = [
     {
         "name": "translate",
-        "description": "Translate text with the Turing Translate app on this PC (local GPU model by default, "
+        "description": "Translate text with the AI Translate app on this PC (local GPU model by default, "
                        "nothing leaves the machine). Uses the user's phrase book for idioms and fixed terms. "
                        "Call list_languages first to see which languages are enabled.",
         "inputSchema": {
@@ -212,7 +212,7 @@ def main() -> None:
                 wanted = params.get("protocolVersion")
                 reply(msg_id, {"protocolVersion": wanted if wanted in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0],
                                "capabilities": {"tools": {}},
-                               "serverInfo": {"name": "turing-translate", "version": VERSION}})
+                               "serverInfo": {"name": "ai-translate", "version": VERSION}})
             elif method == "ping":
                 reply(msg_id, {})
             elif method == "tools/list":

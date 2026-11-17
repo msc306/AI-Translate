@@ -95,7 +95,7 @@ class History:
                 return value.replace("|", "\\|").replace("\n", "<br>")
             columns = (tr("Zeit"), tr("Richtung"), tr("Anbieter"), tr("Ausgangstext"), tr("Übersetzung"),
                        tr("Korrektur"))
-            lines = ["# " + tr("Turing Translate: Verlauf"), "",
+            lines = ["# " + tr("AI Translate: Verlauf"), "",
                      "| " + " | ".join(columns) + " |",
                      "|---|---|---|---|---|---|"]
             lines += ["| " + " | ".join(cell(c) for c in (

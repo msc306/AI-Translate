@@ -1,10 +1,10 @@
 {
-  "name": "turing-translate",
+  "name": "ai-translate",
   "private": true,
   "description": "Docked desktop translator for Windows with local and cloud models",
   "license": "MIT",
   "repository": "github:msc306/AI-Translate",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
