@@ -20,6 +20,8 @@ LLAMA_TAG = "b12360"
 _LLAMA = f"https://github.com/ggml-org/llama.cpp/releases/download/{LLAMA_TAG}/"
 _GEMMA = ("https://huggingface.co/lmstudio-community/gemma-4-E2B-it-GGUF/resolve/"
           "eed445ccfb8aef2e279df1a97e133baf06e443b4/")
+WHISPER_TAG = "b5454"
+_WHISPER_MODELS = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
 
 # "label" is the German source text; state() translates it, filling in "label_values".
 CATALOG = {
@@ -53,6 +55,35 @@ CATALOG = {
                 "url": _GEMMA + "gemma-4-E2B-it-Q4_K_M.gguf",
                 "sha256": "71e6e8cb64a76da1a734fb8f6ba389d2784950d9902f5e87244fca0a15190c94",
                 "size_mb": 3269,
+            },
+        ],
+    },
+    "whisper": {
+        "kind": "runtime",
+        "folder": "whisper",
+        "exe": "whisper-cli.exe",
+        "label": "whisper.cpp-Spracherkennung ({tag})",
+        "label_values": {"tag": WHISPER_TAG},
+        "size_mb": 9,
+        "files": [
+            {
+                "name": f"whisper-{WHISPER_TAG}-bin-x64.zip",
+                "url": f"https://github.com/ggml-org/whisper.cpp/releases/download/{WHISPER_TAG}/whisper-bin-x64.zip",
+                "sha256": "6ba69e3482d7826214f90a6a9c84ca07782aec1e1d0c6a7c30c994fd5d816ccb",
+                "size_mb": 9,
+            },
+        ],
+    },
+    "speech_model": {
+        "kind": "model",
+        "label": "Whisper small (Sprachmodell, MIT)",
+        "size_mb": 182,
+        "files": [
+            {
+                "name": "ggml-small-q5_1.bin",
+                "url": _WHISPER_MODELS + "ggml-small-q5_1.bin",
+                "sha256": "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb",
+                "size_mb": 182,
             },
         ],
     },
@@ -93,7 +124,7 @@ class Downloader:
     def target(self, item: str) -> Path:
         entry = self.catalog[item]
         if entry["kind"] == "runtime":
-            return self.data_dir / "runtime" / "llama-server.exe"
+            return self.data_dir / entry.get("folder", "runtime") / entry.get("exe", "llama-server.exe")
         return self.data_dir / "models" / entry["files"][0]["name"]
 
     def state(self) -> list[dict]:
@@ -168,7 +199,8 @@ class Downloader:
 
             if entry["kind"] == "runtime":
                 self._report(item, req_id, "extracting", done_mb=total_mb, total_mb=total_mb)
-                _install_runtime(parts, self.data_dir / "runtime")
+                _install_runtime(parts, self.data_dir / entry.get("folder", "runtime"),
+                                 entry.get("exe", "llama-server.exe"))
                 for part in parts:
                     part.unlink(missing_ok=True)
             else:
@@ -322,8 +354,8 @@ def _sha256(path: Path, cancel: threading.Event | None = None) -> str:
     return digest.hexdigest()
 
 
-def _install_runtime(archives: list[Path], target: Path) -> None:
-    """Unpacks all archives into one flat folder and swaps it in only when llama-server.exe is there."""
+def _install_runtime(archives: list[Path], target: Path, exe_name: str = "llama-server.exe") -> None:
+    """Unpacks all archives into one flat folder and swaps it in only when `exe_name` is there."""
     staging = target.with_name(target.name + ".new")
     shutil.rmtree(staging, ignore_errors=True)
     staging.mkdir(parents=True)
@@ -331,7 +363,7 @@ def _install_runtime(archives: list[Path], target: Path) -> None:
         for archive in archives:
             with zipfile.ZipFile(archive) as bundle:
                 names = [n for n in bundle.namelist() if not n.endswith("/")]
-                exe = next((n for n in names if n.replace("\\", "/").split("/")[-1].lower() == "llama-server.exe"), None)
+                exe = next((n for n in names if n.replace("\\", "/").split("/")[-1].lower() == exe_name), None)
                 prefix = exe.replace("\\", "/").rsplit("/", 1)[0] + "/" if exe and "/" in exe.replace("\\", "/") else ""
                 for name in names:
                     clean = name.replace("\\", "/")
@@ -348,8 +380,8 @@ def _install_runtime(archives: list[Path], target: Path) -> None:
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     with bundle.open(name) as source, open(destination, "wb") as out:
                         shutil.copyfileobj(source, out, CHUNK)
-        if not (staging / "llama-server.exe").is_file():
-            raise DownloadError(tr("Im Archiv fehlt llama-server.exe."))
+        if not (staging / exe_name).is_file():
+            raise DownloadError(tr("Im Archiv fehlt {name}.", name=exe_name))
         shutil.rmtree(target, ignore_errors=True)
         staging.replace(target)
     except Exception:

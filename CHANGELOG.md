@@ -2,6 +2,15 @@
 
 All notable changes to this project.
 
+## Unreleased
+
+### New
+
+- Speech input: microphone button and shortcut (`Ctrl+Alt+M`, configurable). Recognition with
+  whisper.cpp (download in the settings, any `ggml-*.bin` model selectable) or the Windows speech
+  recogniser.
+- Read aloud: speaker buttons for the input and the translation, voice selectable in the settings.
+
 ## 0.4.1 – 2026-11-17
 
 ### Changed

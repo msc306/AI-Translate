@@ -46,6 +46,8 @@
     <button id="btn-cancel" data-i18n="cancel" hidden></button>
     <button id="btn-paste" data-i18n="paste" data-i18n-title="paste_title"></button>
     <span class="with-info"><button id="btn-clear" data-i18n="clear"></button><span class="info" tabindex="0" data-tip="clear_tip">i</span></span>
+    <span class="with-info"><button id="btn-speak-input" class="icon" data-i18n-title="speak_input_title">🔊</button><span class="info" tabindex="0" data-tip="speak_input_tip">i</span></span>
+    <span class="with-info"><button id="btn-mic" class="icon" data-i18n-title="mic_title">🎤</button><span class="info" tabindex="0" data-tip="mic_tip">i</span></span>
     <span class="spacer"></span>
     <span class="with-info"><label class="check"><input type="checkbox" id="auto"> <span data-i18n="auto_check"></span></label><span class="info" tabindex="0" data-tip="auto_tip">i</span></span>
   </div>
@@ -81,6 +83,7 @@
     <button id="btn-copy" data-i18n="copy"></button>
     <span class="with-info"><button id="btn-save-phrase" data-i18n="save_phrase"></button><span class="info" tabindex="0" data-tip="save_phrase_tip">i</span></span>
     <span class="with-info"><button id="btn-explain" data-i18n="explain"></button><span class="info" tabindex="0" data-tip="explain_tip">i</span></span>
+    <span class="with-info"><button id="btn-speak-output" class="icon" data-i18n-title="speak_output_title">🔊</button><span class="info" tabindex="0" data-tip="speak_output_tip">i</span></span>
   </div>
   <div id="meta" class="meta"></div>
   <div id="warnings" class="warnings" hidden></div>
@@ -154,6 +157,25 @@
     <input type="number" id="set-keep" min="0" step="5"></label>
   <p class="meta" data-i18n="keep_hint"></p>
 
+  <h2 data-i18n="sec_speech"></h2>
+  <p class="meta" data-i18n="speech_hint"></p>
+  <label><span data-i18n="speech_engine"></span>
+    <select id="set-speech-engine">
+      <option value="auto" data-i18n="speech_engine_auto"></option>
+      <option value="whisper" data-i18n="speech_engine_whisper"></option>
+      <option value="windows" data-i18n="speech_engine_windows"></option>
+    </select></label>
+  <div class="model-row">
+    <label><span data-i18n="speech_model"></span>
+      <span class="row nowrap"><select id="set-speech-model"></select><button id="speech-browse" data-i18n="browse"></button></span></label>
+    <div class="row"><button id="speech-model-link" data-i18n="model_link"></button></div>
+    <p class="meta" data-i18n="speech_model_hint"></p>
+  </div>
+  <div id="set-speech-downloads"></div>
+  <div id="speech-status" class="meta"></div>
+  <label><span data-i18n="voice"></span> <select id="set-voice"></select></label>
+  <p class="meta" data-i18n="voice_hint"></p>
+
   <h2 data-i18n="sec_online"></h2>
   <p class="meta" data-i18n="online_hint"></p>
 
@@ -221,6 +243,8 @@
   <label class="check"><input type="checkbox" id="set-autostart"> <span data-i18n="autostart"></span></label>
   <label><span data-i18n="hk_toggle"></span> <input type="text" id="set-hk-toggle"></label>
   <label><span data-i18n="hk_clip"></span> <input type="text" id="set-hk-clip"></label>
+  <label><span data-i18n="hk_mic"></span> <input type="text" id="set-hk-mic"></label>
+  <p class="meta" data-i18n="hk_hint"></p>
 
   <h2 data-i18n="sec_memory"></h2>
   <label class="check"><input type="checkbox" id="set-vector"> <span data-i18n="vector"></span></label>

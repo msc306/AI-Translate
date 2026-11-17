@@ -81,6 +81,11 @@ button { cursor: pointer; }
 button:hover { border-color: var(--accent); }
 button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
 button:disabled, option:disabled { opacity: .5; cursor: default; }
+button.icon { padding: 5px 7px; line-height: 1; flex: none; }
+button.icon.active { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+#btn-mic.active { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { #btn-mic.active { animation: none; } }
 select { flex: 1; min-width: 0; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 

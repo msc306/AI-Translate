@@ -420,10 +420,67 @@ CATALOG = {
         "es": "La conexión se cerró antes de tiempo",
         "fr": "Connexion interrompue prématurément",
     },
-    "Im Archiv fehlt llama-server.exe.": {
-        "en": "llama-server.exe is missing from the archive.",
-        "es": "Falta llama-server.exe en el archivo comprimido.",
-        "fr": "llama-server.exe est absent de l'archive.",
+    "Im Archiv fehlt {name}.": {
+        "en": "{name} is missing from the archive.",
+        "es": "Falta {name} en el archivo comprimido.",
+        "fr": "{name} est absent de l'archive.",
+    },
+    "whisper.cpp-Spracherkennung ({tag})": {
+        "en": "whisper.cpp speech recognition ({tag})",
+        "es": "Reconocimiento de voz whisper.cpp ({tag})",
+        "fr": "Reconnaissance vocale whisper.cpp ({tag})",
+    },
+    "Whisper small (Sprachmodell, MIT)": {
+        "en": "Whisper small (speech model, MIT)",
+        "es": "Whisper small (modelo de voz, MIT)",
+        "fr": "Whisper small (modèle vocal, MIT)",
+    },
+
+    # ---- speech input (speech.py) ----
+    "Spracheingabe gibt es nur unter Windows.": {
+        "en": "Speech input is only available on Windows.",
+        "es": "La entrada de voz solo está disponible en Windows.",
+        "fr": "La saisie vocale n'est disponible que sous Windows.",
+    },
+    "Es läuft bereits eine Aufnahme.": {
+        "en": "A recording is already running.",
+        "es": "Ya hay una grabación en curso.",
+        "fr": "Un enregistrement est déjà en cours.",
+    },
+    "Es läuft keine Aufnahme.": {
+        "en": "No recording is running.",
+        "es": "No hay ninguna grabación en curso.",
+        "fr": "Aucun enregistrement en cours.",
+    },
+    "Das Mikrofon lässt sich nicht öffnen: {detail}": {
+        "en": "The microphone cannot be opened: {detail}",
+        "es": "No se puede abrir el micrófono: {detail}",
+        "fr": "Impossible d'ouvrir le microphone : {detail}",
+    },
+    "Es war nichts zu hören. Ist das richtige Mikrofon eingestellt und nicht stummgeschaltet?": {
+        "en": "Nothing could be heard. Is the right microphone selected and not muted?",
+        "es": "No se oyó nada. ¿Está seleccionado el micrófono correcto y no está silenciado?",
+        "fr": "Rien n'a été entendu. Le bon microphone est-il sélectionné et non coupé ?",
+    },
+    "In der Aufnahme wurde kein Text erkannt.": {
+        "en": "No text was recognised in the recording.",
+        "es": "No se reconoció ningún texto en la grabación.",
+        "fr": "Aucun texte n'a été reconnu dans l'enregistrement.",
+    },
+    "Für die Spracheingabe fehlt die Spracherkennung. In den Einstellungen unter „Spracheingabe“ lassen sich whisper.cpp und ein Sprachmodell herunterladen.": {
+        "en": "Speech recognition is missing. Under “Speech input” in the settings you can download whisper.cpp and a speech model.",
+        "es": "Falta el reconocimiento de voz. En los ajustes, en «Entrada de voz», puede descargar whisper.cpp y un modelo de voz.",
+        "fr": "La reconnaissance vocale est absente. Dans les paramètres, sous « Saisie vocale », vous pouvez télécharger whisper.cpp et un modèle vocal.",
+    },
+    "Das gewählte Sprachmodell fehlt: {path}": {
+        "en": "The selected speech model is missing: {path}",
+        "es": "Falta el modelo de voz elegido: {path}",
+        "fr": "Le modèle vocal choisi est introuvable : {path}",
+    },
+    "Die Spracherkennung ist fehlgeschlagen: {detail}": {
+        "en": "Speech recognition failed: {detail}",
+        "es": "El reconocimiento de voz ha fallado: {detail}",
+        "fr": "La reconnaissance vocale a échoué : {detail}",
     },
 
     # ---- language packs and phrases ----

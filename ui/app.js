@@ -24,7 +24,14 @@ const state = {
   quietHistoryId: null,
   sentCorrection: "",
   downloads: {},
+  recordId: null,     // id of the running record_start, null when idle
+  recognising: false, // recording stopped, text not yet back
+  speaking: null,     // "input" or "output" while a text is read aloud
 };
+
+// downloads that belong to speech input; they are listed in the speech section, not in the first-start guide
+const SPEECH_ITEMS = ["whisper", "speech_model"];
+const SPEECH_MODEL_LINK = "https://huggingface.co/ggerganov/whisper.cpp/tree/main";
 
 const DOWNLOAD_STATES = ["running", "verifying", "extracting", "done", "cancelled", "error"];
 const STAGE_NAMES = ["start", "vram_check", "loading", "translating", "retry", "unloading", "clarify", "review",
@@ -430,7 +437,21 @@ function onSidecar(e) {
     case "ocr":
       onOcr(e);
       break;
+    case "recording":
+      onRecording(e);
+      break;
+    case "speech":
+      onSpeech(e);
+      break;
     case "error":
+      if (e.id === state.recordId) {
+        state.recordId = null;
+        state.recognising = false;
+        showMic();
+        setBusy(false);
+        setStatus(e.message);
+        return;
+      }
       if (e.id === state.ocrId) {
         state.ocrId = null;
         setBusy(false);
@@ -484,6 +505,160 @@ function setSettingsNote(text) {
 }
 
 /** Fill a select and keep the current (or the wanted) value if it still exists. */
+// ---------- Speech: microphone input and reading aloud ----------
+
+function showMic() {
+  const button = $("btn-mic");
+  const recording = Boolean(state.recordId) && !state.recognising;
+  button.classList.toggle("active", recording);
+  button.disabled = state.recognising;
+  button.title = recording ? t("mic_stop_title") : t("mic_title");
+}
+
+function toggleMic() {
+  if (state.recognising) return;
+  if (state.recordId) {
+    state.recognising = true;
+    state.recordId = send({ cmd: "record_stop", lang: $("source").value || uiLanguage });
+    showMic();
+    setStatus(t("stage_transcribing"), true);
+    return;
+  }
+  stopSpeaking();
+  showView("main");
+  state.recordId = send({ cmd: "record_start" });
+  showMic();
+  setStatus(t("stage_recording"), true);
+}
+
+function onRecording(e) {
+  if (e.id !== state.recordId) return;
+  if (e.state === "stopped") state.recordSeconds = e.seconds;
+  if (e.state === "stopped" && !state.recognising) {
+    // stopped by the sidecar itself (maximum length reached)
+    state.recognising = true;
+    setStatus(t("stage_transcribing"), true);
+  } else if (e.state === "cancelled") {
+    state.recordId = null;
+    state.recognising = false;
+    setStatus("");
+  }
+  showMic();
+}
+
+function onSpeech(e) {
+  if (e.id !== state.recordId) return;
+  state.recordId = null;
+  state.recognising = false;
+  showMic();
+  const input = $("input");
+  const before = input.value.slice(0, input.selectionStart ?? input.value.length);
+  const after = input.value.slice(input.selectionEnd ?? input.value.length);
+  const gap = before && !/\s$/.test(before) ? " " : "";
+  input.value = before + gap + e.text + after;
+  const caret = (before + gap + e.text).length;
+  input.setSelectionRange(caret, caret);
+  input.focus();
+  setStatus(t("speech_done", { engine: e.engine === "whisper" ? "Whisper" : "Windows", seconds: state.recordSeconds ?? "?" }));
+  if (input.value.trim()) translate();
+}
+
+function voicesFor(lang) {
+  const voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+  return voices.filter((v) => v.lang.toLowerCase().startsWith(lang.toLowerCase()));
+}
+
+function pickVoice(lang) {
+  let chosen = "";
+  try { chosen = localStorage.getItem("voice") || ""; } catch {}
+  const matching = voicesFor(lang);
+  return matching.find((v) => v.name === chosen) || matching.find((v) => v.localService) || matching[0] || null;
+}
+
+function stopSpeaking() {
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  state.speaking = null;
+  showSpeakButtons();
+}
+
+function showSpeakButtons() {
+  for (const [which, id] of [["input", "btn-speak-input"], ["output", "btn-speak-output"]]) {
+    const active = state.speaking === which;
+    $(id).classList.toggle("active", active);
+    $(id).title = active ? t("speak_stop_title") : t(`speak_${which}_title`);
+  }
+}
+
+function speak(which) {
+  if (!window.speechSynthesis) return;
+  if (state.speaking === which) {
+    stopSpeaking();
+    return;
+  }
+  stopSpeaking();
+  const done = state.lastDone;
+  const text = which === "input"
+    ? $("input").value.trim()
+    : ($("output").classList.contains("error") ? "" : $("output").textContent.trim());
+  if (!text) {
+    setStatus(t("nothing_to_speak"));
+    return;
+  }
+  let lang = which === "input" ? ($("source").value || done?.source) : (done?.target || $("target").value);
+  lang = lang || uiLanguage;
+  const utterance = new SpeechSynthesisUtterance(text);
+  const voice = pickVoice(lang);
+  if (voice) {
+    utterance.voice = voice;
+    utterance.lang = voice.lang;
+  } else {
+    utterance.lang = lang;
+    setStatus(t("no_voice", { language: languageLabel(lang) }));
+  }
+  utterance.onend = utterance.onerror = () => {
+    if (state.speaking === which) {
+      state.speaking = null;
+      showSpeakButtons();
+    }
+  };
+  state.speaking = which;
+  showSpeakButtons();
+  speechSynthesis.speak(utterance);
+}
+
+function fillVoices() {
+  const voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+  let chosen = "";
+  try { chosen = localStorage.getItem("voice") || ""; } catch {}
+  fillSelect($("set-voice"), [["", t("voice_auto")], ...voices.map((v) => [v.name, `${v.name} (${v.lang})`])], chosen);
+}
+
+function renderSpeechSettings(info) {
+  const speechInfo = info.speech || {};
+  const config = info.config.speech || {};
+  fillSelect($("set-speech-engine"), [
+    ["auto", t("speech_engine_auto")],
+    ["whisper", t("speech_engine_whisper")],
+    ["windows", t("speech_engine_windows")],
+  ], config.engine || "auto");
+  const models = speechInfo.models || [];
+  const configured = config.model || "auto";
+  const autoName = speechInfo.auto_model || "";
+  const options = [["auto", autoName ? t("speech_model_auto", { name: autoName }) : t("speech_model_none")],
+    ...models.map((m) => [m.path, `${m.name} (${m.size_mb} MB)`])];
+  if (configured !== "auto" && !models.some((m) => m.path === configured)) {
+    options.push([configured, t("file_missing", { path: configured })]);
+  }
+  fillSelect($("set-speech-model"), options, configured);
+  let status = t("speech_none");
+  if (speechInfo.whisper && models.length) status = t("speech_ready_whisper");
+  else if ((speechInfo.windows || []).length) {
+    status = t("speech_ready_windows", { languages: speechInfo.windows.join(", ") });
+  }
+  $("speech-status").textContent = status;
+  fillVoices();
+}
+
 function fillSelect(select, options, wanted) {
   const previous = wanted ?? select.value;
   select.replaceChildren(...options.map(([value, label, disabled]) => {
@@ -511,6 +686,9 @@ function showUiLanguage(code) {
   for (const icon of document.querySelectorAll(".info[data-tip]")) icon.setAttribute("aria-label", t(icon.dataset.tip));
   invoke("set_ui_language", { lang }).catch(() => {});
   if (state.layout) applyLayout(state.layout);
+  showMic();
+  showSpeakButtons();
+  $("speech-model-link").title = t("model_link_title", { url: SPEECH_MODEL_LINK });
 }
 
 /** The user picked a language: show it at once and store it, so the sidecar answers in it too. */
@@ -642,7 +820,14 @@ function startDownload(item) {
 }
 
 function renderDownloads(info) {
-  const rows = (info.downloads || []).map((item) => {
+  const rows = (info.downloads || []).filter((item) => !SPEECH_ITEMS.includes(item.item)).map(downloadRow);
+  const hint = el("p", { className: "meta", textContent: t("downloads_hint", { dir: info.data_dir }) });
+  $("set-downloads").replaceChildren(...rows, ...(rows.length ? [hint] : []));
+  $("set-speech-downloads").replaceChildren(
+    ...(info.downloads || []).filter((item) => SPEECH_ITEMS.includes(item.item)).map(downloadRow));
+}
+
+function downloadRow(item) {
     const button = el("button");
     if (isRunning(item.item)) {
       button.textContent = t("cancel");
@@ -658,14 +843,12 @@ function renderDownloads(info) {
         el("div", { className: "meta", textContent: downloadText(item) }),
         el("div", { className: "meta", textContent: why })),
       button);
-  });
-  const hint = el("p", { className: "meta", textContent: t("downloads_hint", { dir: info.data_dir }) });
-  $("set-downloads").replaceChildren(...rows, ...(rows.length ? [hint] : []));
 }
 
 function renderSetup(info) {
   const online = info.engines.some((e) => e.id !== "local" && e.enabled && e.ready);
-  const anyRunning = (info.downloads || []).some((item) => isRunning(item.item));
+  const downloads = (info.downloads || []).filter((item) => !SPEECH_ITEMS.includes(item.item));
+  const anyRunning = downloads.some((item) => isRunning(item.item));
   const show = anyRunning || (!localReady(info) && !online);
   $("setup").hidden = !show;
   if (!show) return;
@@ -679,11 +862,11 @@ function renderSetup(info) {
           ].filter(Boolean).join(t("and")) }))
     : t("setup_no_gpu");
   $("setup-local").hidden = !gpu;
-  const missing = (info.downloads || []).filter((item) => !item.installed);
+  const missing = downloads.filter((item) => !item.installed);
   const button = $("setup-download");
   button.disabled = anyRunning || !missing.length;
   button.textContent = anyRunning ? t("downloading") : t("setup_download");
-  $("setup-progress").textContent = (info.downloads || [])
+  $("setup-progress").textContent = downloads
     .filter((item) => state.downloads[item.item] || item.installed)
     .map((item) => `${item.label}: ${downloadText(item)}`).join("\n");
 }
@@ -757,6 +940,7 @@ function renderLanguages(info) {
 function renderSettings(info) {
   const config = info.config;
   renderModelRows(info);
+  renderSpeechSettings(info);
   renderProviders(info);
   renderLanguages(info);
   $("set-reserve").value = config.engine.vram_reserve_mb;
@@ -895,6 +1079,7 @@ function applyLayout(layout) {
   $("set-ontop").checked = layout.floating_on_top;
   $("set-hk-toggle").value = layout.hotkey_toggle;
   $("set-hk-clip").value = layout.hotkey_clipboard;
+  $("set-hk-mic").value = layout.hotkey_mic || "";
 }
 
 async function setLayout(patch) {
@@ -1188,10 +1373,17 @@ async function init() {
   $("setup-settings").onclick = openSettings;
   $("setup-download").onclick = () => {
     // runtime first: it is small and makes the model usable as soon as that arrives
-    for (const item of (state.info?.downloads || []).filter((d) => !d.installed)) startDownload(item.item);
+    for (const item of (state.info?.downloads || []).filter((d) => !d.installed && !SPEECH_ITEMS.includes(d.item))) {
+      startDownload(item.item);
+    }
   };
   $("btn-back").onclick = $("btn-history-back").onclick = () => showView("main");
   $("btn-explain").onclick = explain;
+  $("btn-mic").onclick = toggleMic;
+  $("btn-speak-input").onclick = () => speak("input");
+  $("btn-speak-output").onclick = () => speak("output");
+  await listen("mic-toggle", toggleMic);
+  if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => { if (state.info) fillVoices(); };
   initInfoTips();
   $("pack-example").onclick = () => { $("pack-url").value = PACK_EXAMPLE_URL; };
   $("output").addEventListener("blur", noteCorrection);
@@ -1236,6 +1428,18 @@ async function init() {
   $("set-ontop").onchange = () => setLayout({ floating_on_top: $("set-ontop").checked });
   $("set-hk-toggle").onchange = () => setLayout({ hotkey_toggle: $("set-hk-toggle").value.trim() });
   $("set-hk-clip").onchange = () => setLayout({ hotkey_clipboard: $("set-hk-clip").value.trim() });
+  $("set-hk-mic").onchange = () => setLayout({ hotkey_mic: $("set-hk-mic").value.trim() });
+  $("set-speech-engine").onchange = () => setConfig({ speech: { engine: $("set-speech-engine").value } });
+  $("set-speech-model").onchange = () => setConfig({ speech: { model: $("set-speech-model").value } });
+  $("speech-browse").onclick = async () => {
+    const path = await invoke("pick_file", { kind: "speech" });
+    if (path) setConfig({ speech: { model: path } });
+  };
+  $("speech-model-link").onclick = () =>
+    invoke("open_url", { url: SPEECH_MODEL_LINK }).catch((err) => setSettingsNote(String(err)));
+  $("set-voice").onchange = () => {
+    try { localStorage.setItem("voice", $("set-voice").value); } catch {}
+  };
   $("set-autostart").onchange = async () => {
     $("set-autostart").checked = await invoke("set_autostart", { enabled: $("set-autostart").checked });
   };

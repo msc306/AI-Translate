@@ -21,6 +21,12 @@ Commands and the events that answer them:
       -> download {item, state: running|verifying|extracting|done|cancelled|error, done_mb?, total_mb?, message?}
   ocr {clipboard?: true, path?, lang?}
       -> ocr {text, lang, matched, available}   text read from a screenshot by the Windows text recogniser
+  record_start -> recording {state: "started"}   start recording from the default microphone
+  record_stop {lang?} -> recording {state: "stopped", seconds}, speech {text, engine, lang}
+      the recording is recognised by whisper.cpp or, without it, by the Windows recogniser;
+      after two minutes the recording stops by itself and reports under the id of record_start
+  record_cancel -> recording {state: "cancelled"}
+  speech_info -> speech_info {whisper, models, windows, recording}
 Failures are reported as error {code, message}.
 
 Every text meant for the user (messages, labels, reasons) is in the language set by the config key
@@ -46,6 +52,7 @@ import i18n
 import languages
 import local_engine
 import ocr
+import speech
 import phrases
 import prompting
 import providers
@@ -93,6 +100,9 @@ DEFAULT_CONFIG = {
     "clarify": False,   # ask before translating a short ambiguous text
     "thorough": False,  # second pass: the model reviews and corrects its own draft
     "senses": True,     # single words or word lists: list common meanings with examples
+    # speech input: engine "auto" (whisper.cpp if installed, else Windows), "whisper" or "windows";
+    # model "auto" (best ggml-*.bin in the models folder) or a path to a whisper model file
+    "speech": {"engine": "auto", "model": "auto"},
 }
 
 MODEL_PREFERENCES = {
@@ -184,6 +194,9 @@ class Sidecar:
         self.server_lock = threading.Lock()
         self.unload_timer: threading.Timer | None = None
         self.downloader = downloads.Downloader(local_engine.data_dir(), emit)
+        self.recorder = speech.Recorder()
+        self.recorder.on_timeout = self.record_timeout
+        self.record_id = None
         i18n.set_language(self.config()["ui_language"])
         self.sync_index()
 
@@ -293,6 +306,7 @@ class Sidecar:
             "packs": [pack.info() for pack in self.book.packs.values()],
             "memory": self.index.info() if full["memory"].get("vector") else {"state": "off", "count": 0, "error": ""},
             "downloads": self.downloader.state(),
+            "speech": self.speech_info(),
             "data_dir": str(local_engine.data_dir()),
             "config": self.public_config(),
         }
@@ -801,10 +815,21 @@ class Sidecar:
         elif cmd == "ocr":
             # the recogniser takes a second or two; keep reading commands meanwhile
             threading.Thread(target=self.read_image, args=(req,), daemon=True).start()
+        elif cmd == "record_start":
+            self.record_start(req)
+        elif cmd == "record_stop":
+            # recognition takes a few seconds; keep reading commands meanwhile
+            threading.Thread(target=self.record_stop, args=(req,), daemon=True).start()
+        elif cmd == "record_cancel":
+            self.recorder.cancel()
+            emit({"id": req_id, "event": "recording", "state": "cancelled"})
+        elif cmd == "speech_info":
+            emit({"id": req_id, "event": "speech_info", **self.speech_info()})
         elif cmd == "shutdown":
             self.stop_worker()
             self.unload()
             self.downloader.cancel()
+            self.recorder.cancel()
             return False
         else:
             emit({"id": req_id, "event": "error", "code": "unknown_command", "message": tr("Unbekannter Befehl: {cmd}", cmd=cmd)})
@@ -820,6 +845,51 @@ class Sidecar:
             emit({"id": req_id, "event": "ocr", **result})
         except ocr.OcrError as err:
             emit({"id": req_id, "event": "error", "code": "ocr_" + err.code, "message": str(err)})
+
+    # ---- speech input ----
+
+    def speech_info(self) -> dict:
+        data = local_engine.data_dir()
+        auto = speech.resolve_model("auto", data)
+        return {
+            "whisper": speech.whisper_exe(data) is not None,
+            "models": speech.list_models(data),
+            "auto_model": auto.stem.removeprefix("ggml-") if auto else "",
+            "windows": speech.windows_languages() if os.name == "nt" else [],
+            "recording": self.recorder.recording,
+        }
+
+    def record_start(self, req: dict) -> None:
+        req_id = req.get("id")
+        try:
+            self.recorder.start()
+            self.record_id = req_id
+            emit({"id": req_id, "event": "recording", "state": "started"})
+        except speech.SpeechError as err:
+            emit({"id": req_id, "event": "error", "code": "speech_" + err.code, "message": str(err)})
+
+    def record_stop(self, req: dict) -> None:
+        """Stop the recording and recognise it; reports `speech {text, engine, lang}`."""
+        req_id = req.get("id") or self.record_id
+        try:
+            wav, seconds = self.recorder.stop()
+        except speech.SpeechError as err:
+            emit({"id": req_id, "event": "error", "code": "speech_" + err.code, "message": str(err)})
+            return
+        emit({"id": req_id, "event": "recording", "state": "stopped", "seconds": round(seconds, 1)})
+        cfg = self.config().get("speech", {})
+        try:
+            result = speech.transcribe(wav, str(req.get("lang") or ""), local_engine.data_dir(),
+                                       model=str(cfg.get("model") or "auto"), engine=str(cfg.get("engine") or "auto"))
+            emit({"id": req_id, "event": "speech", **result})
+        except speech.SpeechError as err:
+            emit({"id": req_id, "event": "error", "code": "speech_" + err.code, "message": str(err)})
+        finally:
+            wav.unlink(missing_ok=True)
+
+    def record_timeout(self) -> None:
+        """The recording reached its maximum length: finish it as if the user had pressed stop."""
+        threading.Thread(target=self.record_stop, args=({"id": self.record_id},), daemon=True).start()
 
     def stop_worker(self) -> None:
         if self.worker and self.worker.is_alive():

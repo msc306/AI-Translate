@@ -16,6 +16,9 @@ The interface is available in German, English, Spanish and French.
   selectable), or through Claude, OpenRouter or OpenAI-compatible services.
 - **Translate screenshots.** A pasted image is read with the Windows text recogniser; the recognised
   text lands in the input field and is translated like typed text. The image never leaves the PC.
+- **Speak and listen.** The microphone button (or `Ctrl+Alt+M`) records speech and writes it into
+  the input field; recognition runs on the PC with whisper.cpp or, without it, with the Windows
+  speech recogniser. Speaker buttons read the input and the translation aloud with the Windows voices.
 - **Subscription instead of an API key.** A Claude subscription (Pro/Max) can be used through Claude
   Code, a ChatGPT subscription through the Codex CLI. API keys work as well.
 - **Phrase memory.** Idioms are translated by meaning ("Ich verstehe nur Bahnhof" → "It's all Greek
@@ -116,6 +119,14 @@ installer with `src-tauri\tauri.bundle.conf.json` into `src-tauri\target\release
   `Ctrl+Alt+U`). Text recognition uses the languages installed in Windows. If the language of the
   image is missing, another one is used and single characters may be wrong; add it under Settings →
   Time & language → Language & region.
+- Speech input: click 🎤 (or press `Ctrl+Alt+M`), speak, click again. The recognised text is inserted
+  at the cursor and translated. Under Settings → Speech you can download whisper.cpp (9 MB) and the
+  Whisper small model (182 MB, MIT), or choose another Whisper model (`ggml-*.bin`, e.g. from
+  [ggerganov/whisper.cpp](https://huggingface.co/ggerganov/whisper.cpp/tree/main)). Without them the
+  Windows speech recogniser is used for the languages installed in Windows, without punctuation.
+- 🔊 next to "Clear" reads the input aloud, 🔊 next to "Explain" the translation. The voice is chosen
+  by language or fixed in the settings; more voices can be added in Windows under Time & language →
+  Speech.
 - Source and target language, provider, model and style sit above the input field. With the source
   language on "automatic" the direction is detected.
 - The result can be edited directly in the result field. The change is stored as a correction in the

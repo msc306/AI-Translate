@@ -29,6 +29,8 @@ pub struct Layout {
     pub floating_on_top: bool,
     pub hotkey_toggle: String,
     pub hotkey_clipboard: String,
+    /// starts and stops speech input
+    pub hotkey_mic: String,
 }
 
 impl Default for Layout {
@@ -42,6 +44,7 @@ impl Default for Layout {
             floating_on_top: false,
             hotkey_toggle: "Ctrl+Alt+T".into(),
             hotkey_clipboard: "Ctrl+Alt+U".into(),
+            hotkey_mic: "Ctrl+Alt+M".into(),
         }
     }
 }

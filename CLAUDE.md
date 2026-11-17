@@ -81,6 +81,10 @@ Erledigtes wird abgehakt, Neues unten angehängt.
 - [x] A9 Einstellungen in der Reihenfolge Sprachen, Lokale Modelle, Anbieter im Internet, Fenster; mit
       Erklärsätzen zu Downloads, VRAM-Reserve, Haltezeit und Sprachpaketen sowie einem Download-Link
       mit Beispielmodell je Modellgröße
+- [x] A10 Sprechen und Vorlesen: Mikrofon-Knopf und Tastenkürzel (Einstellung `hotkey_mic`) nehmen im
+      Sidecar auf (`sidecar/speech.py`, winmm) und erkennen mit whisper.cpp oder der Windows-Spracherkennung;
+      whisper.cpp und Sprachmodell als Download, anderes Modell wählbar (`config.speech`). Vorlesen von
+      Eingabe und Übersetzung mit `speechSynthesis` im Fenster.
 
 ### B. Aus dem Kurs übernommen
 

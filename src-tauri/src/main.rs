@@ -22,7 +22,8 @@ struct AppState {
     /// true while the window is registered as an AppBar
     registered: Mutex<bool>,
     sidecar: sidecar::Sidecar,
-    hotkeys: Mutex<(Option<Shortcut>, Option<Shortcut>)>,
+    /// global shortcuts: show/hide, translate clipboard, speech input
+    hotkeys: Mutex<[Option<Shortcut>; 3]>,
     /// interface language: de, en, es or fr
     ui_lang: Mutex<String>,
     /// tray menu entries (toggle, dock, quit), kept to rename them with the language
@@ -37,6 +38,8 @@ fn text(lang: &str, key: &str) -> &'static str {
         "quit" => ["Beenden", "Quit", "Salir", "Quitter"],
         "pick_model" => ["Modelldatei auswählen", "Choose a model file", "Elegir archivo de modelo", "Choisir un fichier de modèle"],
         "models" => ["GGUF-Modelle", "GGUF models", "Modelos GGUF", "Modèles GGUF"],
+        "pick_speech" => ["Sprachmodell auswählen", "Choose a speech model", "Elegir modelo de voz", "Choisir un modèle vocal"],
+        "speech_models" => ["Whisper-Modelle (ggml)", "Whisper models (ggml)", "Modelos Whisper (ggml)", "Modèles Whisper (ggml)"],
         "pick_pack" => ["Sprachpaket auswählen", "Choose a language pack", "Elegir paquete de idioma", "Choisir un pack de langue"],
         "packs" => ["Sprachpakete", "Language packs", "Paquetes de idioma", "Packs de langue"],
         "csv" => ["CSV-Tabelle", "CSV table", "Tabla CSV", "Tableau CSV"],
@@ -128,10 +131,12 @@ fn register_hotkeys(app: &AppHandle) {
     let _ = shortcuts.unregister_all();
     let toggle = current.hotkey_toggle.parse::<Shortcut>().ok();
     let clipboard = current.hotkey_clipboard.parse::<Shortcut>().ok();
-    for shortcut in [toggle, clipboard].into_iter().flatten() {
+    let mic = current.hotkey_mic.parse::<Shortcut>().ok();
+    let keys = [toggle, clipboard, mic];
+    for shortcut in keys.into_iter().flatten() {
         let _ = shortcuts.register(shortcut);
     }
-    *state.hotkeys.lock().unwrap() = (toggle, clipboard);
+    *state.hotkeys.lock().unwrap() = keys;
 }
 
 // ---------- Commands for the interface ----------
@@ -145,6 +150,7 @@ async fn pick_file(app: AppHandle, kind: String) -> Option<String> {
     let dialog = match kind.as_str() {
         "model" => dialog.set_title(text(&lang, "pick_model")).add_filter(text(&lang, "models"), &["gguf"]),
         "pack" => dialog.set_title(text(&lang, "pick_pack")).add_filter(text(&lang, "packs"), &["zip", "json"]),
+        "speech" => dialog.set_title(text(&lang, "pick_speech")).add_filter(text(&lang, "speech_models"), &["bin"]),
         _ => dialog,
     };
     let path = dialog.blocking_pick_file()?.into_path().ok()?;
@@ -301,12 +307,15 @@ fn main() {
                     if event.state() != ShortcutState::Pressed {
                         return;
                     }
-                    let (toggle, clipboard) = *app.state::<AppState>().hotkeys.lock().unwrap();
+                    let [toggle, clipboard, mic] = *app.state::<AppState>().hotkeys.lock().unwrap();
                     if Some(*shortcut) == toggle {
                         toggle_visible(app);
                     } else if Some(*shortcut) == clipboard {
                         show(app);
                         let _ = app.emit("translate-clipboard", ());
+                    } else if Some(*shortcut) == mic {
+                        show(app);
+                        let _ = app.emit("mic-toggle", ());
                     }
                 })
                 .build(),
@@ -315,7 +324,7 @@ fn main() {
             layout: Mutex::new(initial),
             registered: Mutex::new(false),
             sidecar: sidecar::Sidecar::default(),
-            hotkeys: Mutex::new((None, None)),
+            hotkeys: Mutex::new([None, None, None]),
             ui_lang: Mutex::new("de".into()),
             tray_items: Mutex::new(Vec::new()),
         })
