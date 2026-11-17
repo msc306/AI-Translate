@@ -1,6 +1,6 @@
 [package]
 name = "ai-translate"
-version = "0.4.1"
+version = "0.5.0"
 description = "Docked desktop translator with local and cloud models"
 license = "MIT"
 repository = "https://github.com/msc306/AI-Translate"
