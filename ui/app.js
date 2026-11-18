@@ -784,12 +784,36 @@ function renderModelRows(info) {
   }
   $("set-model-rows").replaceChildren(...rows);
 
+  renderGpu(info);
   const lines = [];
-  if (info.vram) lines.push(t("vram_line", { free: info.vram.free, total: info.vram.total }));
+  if (info.gpu?.backend === "cpu") lines.push(t("cpu_line"));
+  else if (info.vram) lines.push(t("vram_line", { free: info.vram.free, total: info.vram.total }));
   else lines.push(t("no_gpu"));
   if (!info.runtime) lines.push(t("no_runtime"));
   $("set-models").textContent = lines.join("\n");
   renderDownloads(info);
+}
+
+function renderGpu(info) {
+  const gpu = info.gpu;
+  if (!gpu) return;
+  const cards = gpu.cards || [];
+  const vendorName = (vendor) => t("gpu_" + vendor);
+  const options = ["auto", "nvidia", "amd", "intel", "cpu"].map((choice) => {
+    let label;
+    if (choice === "auto") label = t("gpu_auto", { name: gpu.card?.name || t("gpu_cpu") });
+    else label = vendorName(choice);
+    if (!["auto", "cpu"].includes(choice) && !cards.some((c) => c.vendor === choice)) {
+      label += " – " + t("gpu_not_found");
+    }
+    return el("option", { value: choice, textContent: label });
+  });
+  const select = $("set-gpu");
+  select.replaceChildren(...options);
+  select.value = gpu.choice || "auto";
+  $("set-gpu-cards").textContent = cards.length
+    ? t("gpu_cards", { cards: cards.map((c) => c.name).join(", ") })
+    : t("gpu_no_cards");
 }
 
 // ---------- First start and downloads ----------
@@ -852,16 +876,14 @@ function renderSetup(info) {
   const show = anyRunning || (!localReady(info) && !online);
   $("setup").hidden = !show;
   if (!show) return;
-  const gpu = !!info.vram;
-  $("setup-text").textContent = gpu
-    ? (localReady(info)
-        ? t("setup_ready")
-        : t("setup_missing", { what: [
-            info.runtime ? null : t("setup_runtime"),
-            (info.models || []).length ? null : t("setup_model"),
-          ].filter(Boolean).join(t("and")) }))
-    : t("setup_no_gpu");
-  $("setup-local").hidden = !gpu;
+  // without a usable card the processor still runs the model, so the local path stays open
+  const gpu = info.gpu ? info.gpu.backend !== "cpu" : !!info.vram;
+  const missingText = t("setup_missing", { what: [
+    info.runtime ? null : t("setup_runtime"),
+    (info.models || []).length ? null : t("setup_model"),
+  ].filter(Boolean).join(t("and")) });
+  if (localReady(info)) $("setup-text").textContent = t("setup_ready");
+  else $("setup-text").textContent = gpu ? missingText : t("setup_no_gpu") + " " + missingText;
   const missing = downloads.filter((item) => !item.installed);
   const button = $("setup-download");
   button.disabled = anyRunning || !missing.length;
@@ -1443,7 +1465,8 @@ async function init() {
   $("set-autostart").onchange = async () => {
     $("set-autostart").checked = await invoke("set_autostart", { enabled: $("set-autostart").checked });
   };
-  $("set-reserve").onchange = () => setConfig({ engine: { vram_reserve_mb: Number($("set-reserve").value) || 0 } });
+  $("set-gpu").onchange = () => setConfig({ engine: { gpu_vendor: $("set-gpu").value } });
+  $("set-reserve").onchange =() => setConfig({ engine: { vram_reserve_mb: Number($("set-reserve").value) || 0 } });
   $("set-keep").onchange = () => setConfig({ engine: { keep_loaded_seconds: Number($("set-keep").value) || 0 } });
   $("set-vector").onchange = () => setConfig({ memory: { vector: $("set-vector").checked } });
   $("set-checks").onchange = () => setConfig({ checks: { enabled: $("set-checks").checked } });

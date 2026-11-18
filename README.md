@@ -52,14 +52,18 @@ The interface is available in German, English, Spanish and French.
    current user, no administrator rights are needed. Python is included.
 2. On first start the window shows **Getting started** as long as neither a local model nor a
    provider is set up:
-   - **Download runtime and model** fetches the llama.cpp runtime (CUDA 12.4, about 680 MB) and the
+   - **Download runtime and model** fetches the llama.cpp runtime that suits the graphics card
+     (CUDA 12.4 for NVIDIA, about 680 MB; Vulkan for AMD and Intel, about 40 MB; a processor-only
+     build when no card fits, about 25 MB) and the
      small model Gemma 4 E2B (Apache-2.0, about 3.3 GB) into `%LOCALAPPDATA%\AITranslate`. Every
      file is verified by its checksum; an interrupted download resumes next time, and a stalled one
      restarts by itself. After that the app translates without internet. The very first translation
      can take a good minute because Windows reads the model from disk for the first time; after that
      a sentence takes a few seconds.
-   - Without an NVIDIA graphics card, or if you prefer not to download anything, choose an online
-     provider in the settings.
+   - The graphics card is detected automatically. Under **Settings → Local models → Hardware for
+     local models** another card (NVIDIA, AMD, Intel) or the processor can be chosen; the matching
+     runtime is then offered for download. On the processor the small model works, but slowly.
+   - If you prefer not to download anything, choose an online provider in the settings.
 3. Larger models (medium, large) can be chosen as a GGUF file in the settings.
 
 The installer is not signed, so Windows SmartScreen asks on first start ("More info" → "Run
@@ -74,8 +78,8 @@ version can then be uninstalled under Windows Settings → Apps.
 ## Requirements
 
 - Windows 10/11 (64-bit)
-- For local models: an NVIDIA graphics card with a current driver (about 5 GB of graphics memory is
-  enough for the small model). If [LM Studio](https://lmstudio.ai) is installed, its llama.cpp
+- For local models: a graphics card with a current driver – NVIDIA (CUDA), AMD or Intel (Vulkan),
+  about 5 GB of graphics memory is enough for the small model – or, more slowly, just the processor. If [LM Studio](https://lmstudio.ai) is installed, its llama.cpp
   runtime and models are found automatically.
 - For the online providers, depending on the choice: an API key,
   [Claude Code](https://claude.com/claude-code) (signed in with the subscription) or the Codex CLI.
@@ -139,7 +143,7 @@ installer with `src-tauri\tauri.bundle.conf.json` into `src-tauri\target\release
 
 | Provider | Needs | Status |
 |---|---|---|
-| Local | GGUF model, NVIDIA graphics card | tested |
+| Local | GGUF model; NVIDIA, AMD or Intel graphics card, or the processor | tested with NVIDIA, Intel (integrated) and processor; AMD not yet checked on real hardware |
 | Claude (subscription) | Claude Code, signed in | tested |
 | Claude (API key) | key or `ANTHROPIC_API_KEY` | implemented, not yet checked with a real key |
 | OpenAI-compatible | key or `OPENAI_API_KEY`; the address is configurable, so other services and local servers work too | implemented, not yet checked with a real key |

@@ -15,7 +15,6 @@ import threading
 import time
 from pathlib import Path
 
-import gpu
 import winjob
 from i18n import tr
 
@@ -45,21 +44,50 @@ def _version_key(path: Path):
     return [int(n) for n in re.findall(r"\d+", path.name.rsplit("-", 1)[-1])]
 
 
-def find_llama_server(configured: str, app_dir: Path) -> tuple[Path, list[Path]]:
-    """Searches for llama-server.exe. Returns: (exe, additional DLL search paths)."""
+# Own runtime folders and LM Studio backend folders per llama.cpp backend, in the order tried.
+RUNTIME_FOLDERS = {"cuda": ["runtime"], "vulkan": ["runtime-vulkan"], "cpu": ["runtime-cpu"]}
+LMSTUDIO_BACKENDS = {
+    "cuda": ["llama.cpp-win-x86_64-nvidia-cuda12-avx2-*"],
+    "vulkan": ["llama.cpp-win-x86_64-vulkan-avx2-*"],
+    "cpu": ["llama.cpp-win-x86_64-avx2-*"],
+}
+
+
+def find_llama_server(configured: str, app_dir: Path, backend: str = "cuda") -> tuple[Path, list[Path]]:
+    """Searches for llama-server.exe for a backend (cuda, vulkan, cpu).
+
+    Returns: (exe, additional DLL search paths). The processor backend also accepts any GPU build,
+    since those run on the processor too when no layer is offloaded.
+    """
     if configured and configured != "auto":
         exe = Path(configured)
         if exe.is_file():
             return exe, []
         raise EngineError("runtime_missing", tr("llama-server nicht gefunden: {path}", path=configured))
 
-    for folder in (app_dir / "runtime", data_dir() / "runtime"):
-        own = folder / "llama-server.exe"
-        if own.is_file():
-            return own, []
+    order = [backend] + (["vulkan", "cuda"] if backend == "cpu" else [])
+    for kind in order:
+        for name in RUNTIME_FOLDERS.get(kind, []):
+            for folder in (app_dir / name, data_dir() / name):
+                own = folder / "llama-server.exe"
+                if own.is_file():
+                    return own, []
+        found = _lmstudio_server(kind)
+        if found:
+            return found
+    raise EngineError(
+        "runtime_missing",
+        tr("Keine llama.cpp-Laufzeit gefunden. Sie lässt sich in den Einstellungen herunterladen."),
+    )
 
+
+def _lmstudio_server(backend: str) -> tuple[Path, list[Path]] | None:
+    """llama-server from LM Studio's newest matching backend, with its vendor DLL folders."""
     backends = lmstudio_dir() / "extensions" / "backends"
-    candidates = sorted(backends.glob("llama.cpp-win-x86_64-nvidia-cuda12-avx2-*"), key=_version_key, reverse=True)
+    candidates = []
+    for pattern in LMSTUDIO_BACKENDS.get(backend, []):
+        candidates += backends.glob(pattern)
+    candidates.sort(key=_version_key, reverse=True)
     for folder in candidates:
         exe = folder / "llama-server.exe"
         if not exe.is_file():
@@ -74,10 +102,47 @@ def find_llama_server(configured: str, app_dir: Path) -> tuple[Path, list[Path]]
         except (OSError, ValueError):
             pass
         return exe, dll_dirs
-    raise EngineError(
-        "runtime_missing",
-        tr("Keine llama.cpp-Laufzeit gefunden. Sie lässt sich in den Einstellungen herunterladen."),
-    )
+    return None
+
+
+def _server_env(exe: Path, dll_dirs: list[Path]) -> dict:
+    env = os.environ.copy()
+    env["PATH"] = os.pathsep.join([*(str(d) for d in dll_dirs), str(exe.parent), env.get("PATH", "")])
+    return env
+
+
+_DEVICE_LINE = re.compile(r"^\s*(Vulkan\d+):\s*(.+?)\s*\(")
+
+
+def vulkan_device(exe: Path, dll_dirs: list[Path], card_name: str) -> str | None:
+    """llama.cpp's name ("Vulkan1") of the card called `card_name`, or None if not listed.
+
+    Vulkan numbers cards in its own order, which need not match Windows' order, so the names decide.
+    """
+    try:
+        out = subprocess.run(
+            [str(exe), "--list-devices"], stdin=subprocess.DEVNULL, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", timeout=30, env=_server_env(exe, dll_dirs),
+            creationflags=NO_WINDOW,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    wanted = re.sub(r"\W+", "", card_name.lower())
+    for line in (out.stdout + out.stderr).splitlines():
+        match = _DEVICE_LINE.match(line)
+        if match and re.sub(r"\W+", "", match.group(2).lower()) == wanted:
+            return match.group(1)
+    return None
+
+
+def device_args(backend: str, device: str | None = None) -> list[str]:
+    """llama-server arguments that put the model on the chosen hardware."""
+    if backend == "cpu":
+        return ["-ngl", "0", "--device", "none"]
+    args = ["-ngl", "999"]
+    if device:
+        args += ["--device", device]
+    return args
 
 
 def list_models(app_dir: Path) -> list[dict]:
@@ -108,11 +173,11 @@ def _free_port() -> int:
 class LlamaServer:
     """A running llama-server process with exactly one loaded model."""
 
-    def __init__(self, exe: Path, dll_dirs: list[Path], model_path: Path, context_tokens: int, log_file: Path):
+    def __init__(self, exe: Path, dll_dirs: list[Path], model_path: Path, context_tokens: int, log_file: Path,
+                 device: list[str] | None = None):
         self.model_path = model_path
         self.port = _free_port()
-        env = os.environ.copy()
-        env["PATH"] = os.pathsep.join([*(str(d) for d in dll_dirs), str(exe.parent), env.get("PATH", "")])
+        env = _server_env(exe, dll_dirs)
         log_file.parent.mkdir(parents=True, exist_ok=True)
         self._log = open(log_file, "w", encoding="utf-8", errors="replace")
         self.proc = subprocess.Popen(
@@ -121,7 +186,7 @@ class LlamaServer:
                 "-m", str(model_path),
                 "--host", "127.0.0.1",
                 "--port", str(self.port),
-                "-ngl", "999",
+                *(device or ["-ngl", "999"]),
                 "-c", str(context_tokens),
                 "-np", "1",
                 "--no-webui",
@@ -212,11 +277,11 @@ class LlamaServer:
             pass
 
 
-def wait_vram_released(before_free_mb: int | None, gpu_index: int, timeout: float = 3.0) -> dict | None:
-    """Waits briefly until the driver reports the released memory."""
+def wait_vram_released(before_free_mb: int | None, query, timeout: float = 3.0) -> dict | None:
+    """Waits briefly until the driver reports the released memory. `query()` returns the VRAM state."""
     deadline = time.monotonic() + timeout
-    state = gpu.vram_mb(gpu_index)
+    state = query()
     while state and before_free_mb is not None and state["free"] < before_free_mb - 300 and time.monotonic() < deadline:
         time.sleep(0.2)
-        state = gpu.vram_mb(gpu_index)
+        state = query()
     return state

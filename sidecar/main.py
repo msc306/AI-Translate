@@ -17,7 +17,9 @@ Commands and the events that answer them:
   history_export {path, format?: csv|json|md, corrected_only?} -> exported {path, count}
   pack_install {path | url} -> pack_installed        pack_remove {pack} -> pack_removed
   pack_index -> pack_index        provider_models -> provider_models
-  download {item: runtime|model_small} | download_cancel {item?}
+  download {item: runtime|runtime_vulkan|runtime_cpu|model_small|...} | download_cancel {item?}
+  status_info.gpu {choice, vendor, backend, card, cards, runtime_item}: hardware for the local model,
+      chosen with set_config {config: {engine: {gpu_vendor: auto|nvidia|amd|intel|cpu}}}
       -> download {item, state: running|verifying|extracting|done|cancelled|error, done_mb?, total_mb?, message?}
   ocr {clipboard?: true, path?, lang?}
       -> ocr {text, lang, matched, available}   text read from a screenshot by the Windows text recogniser
@@ -80,6 +82,7 @@ DEFAULT_CONFIG = {
         "keep_loaded_seconds": 0,
         "context_tokens": 4096,
         "gpu_index": 0,
+        "gpu_vendor": "auto",   # auto (detected), nvidia, amd, intel, cpu
         "llama_server": "auto",
     },
     "providers": {
@@ -194,6 +197,7 @@ class Sidecar:
         self.server_lock = threading.Lock()
         self.unload_timer: threading.Timer | None = None
         self.downloader = downloads.Downloader(local_engine.data_dir(), emit)
+        self._cards: list[dict] | None = None
         self.recorder = speech.Recorder()
         self.recorder.on_timeout = self.record_timeout
         self.record_id = None
@@ -271,8 +275,9 @@ class Sidecar:
                 }
             except EngineError as err:
                 presets[size] = {"missing": True, "message": str(err)}
+        hardware = self.hardware(cfg)
         try:
-            exe, _ = local_engine.find_llama_server(cfg["llama_server"], self.app_dir)
+            exe, _ = local_engine.find_llama_server(cfg["llama_server"], self.app_dir, hardware["backend"])
             runtime = str(exe)
         except EngineError as err:
             runtime = None
@@ -289,8 +294,10 @@ class Sidecar:
         for model in models:
             model["need_mb"] = local_engine.required_vram_mb(Path(model["path"]), cfg["context_tokens"])
 
+        runtime_item = downloads.RUNTIME_ITEMS[hardware["backend"]]
         return {
-            "vram": gpu.vram_mb(cfg["gpu_index"]),
+            "vram": self.vram(cfg, hardware),
+            "gpu": {**hardware, "cards": self.cards(), "runtime_item": runtime_item},
             "presets": presets,
             "models": models,
             "runtime": runtime,
@@ -305,11 +312,30 @@ class Sidecar:
             "styles": [{"id": key, "label": tr(value[0])} for key, value in prompting.STYLES.items()],
             "packs": [pack.info() for pack in self.book.packs.values()],
             "memory": self.index.info() if full["memory"].get("vector") else {"state": "off", "count": 0, "error": ""},
-            "downloads": self.downloader.state(),
+            # only the runtime that fits the chosen hardware is offered
+            "downloads": [d for d in self.downloader.state()
+                          if d["item"] not in downloads.RUNTIME_ITEMS.values() or d["item"] == runtime_item],
             "speech": self.speech_info(),
             "data_dir": str(local_engine.data_dir()),
             "config": self.public_config(),
         }
+
+    # ---------- hardware ----------
+    def cards(self) -> list[dict]:
+        """Graphics cards of this PC, detected once per run."""
+        if self._cards is None:
+            self._cards = gpu.detect()
+        return self._cards
+
+    def hardware(self, cfg: dict) -> dict:
+        """The hardware the local model runs on: {choice, vendor, backend, card}."""
+        return gpu.resolve(cfg.get("gpu_vendor", "auto"), self.cards())
+
+    def vram(self, cfg: dict, hardware: dict | None = None) -> dict | None:
+        hardware = hardware or self.hardware(cfg)
+        if hardware["backend"] == "cpu":
+            return None
+        return gpu.vram_mb(cfg["gpu_index"], hardware["vendor"])
 
     # ---------- model lifecycle ----------
     def unload(self) -> None:
@@ -333,12 +359,17 @@ class Sidecar:
                 self.server.stop()
                 self.server = None
 
+            hardware = self.hardware(cfg)
+            backend = hardware["backend"]
             emit({"id": req_id, "event": "status", "stage": "vram_check"})
-            state = gpu.vram_mb(cfg["gpu_index"])
-            if state is None:
-                raise EngineError("no_gpu", tr("Keine NVIDIA-Grafikkarte abfragbar (nvidia-smi)."))
+            state = self.vram(cfg, hardware)
+            if state is None and backend != "cpu":
+                raise EngineError("no_gpu", tr(
+                    "Die Grafikkarte ({vendor}) lässt sich nicht abfragen. In den Einstellungen unter "
+                    "„Lokale Modelle“ lässt sich eine andere Karte oder der Prozessor wählen.",
+                    vendor=gpu.VENDOR_NAMES.get(hardware["vendor"], hardware["vendor"])))
             need = local_engine.required_vram_mb(model_path, cfg["context_tokens"])
-            available = state["free"] - cfg["vram_reserve_mb"]
+            available = state["free"] - cfg["vram_reserve_mb"] if state else need
             if available < need:
                 raise EngineError(
                     "vram_insufficient",
@@ -347,11 +378,16 @@ class Sidecar:
                     free_mb=state["free"], need_mb=need, reserve_mb=cfg["vram_reserve_mb"],
                 )
 
-            exe, dll_dirs = local_engine.find_llama_server(cfg["llama_server"], self.app_dir)
+            exe, dll_dirs = local_engine.find_llama_server(cfg["llama_server"], self.app_dir, backend)
             emit({"id": req_id, "event": "status", "stage": "loading", "model": model_path.stem})
             started = time.monotonic()
+            device = None
+            if backend == "vulkan" and hardware["card"]:
+                # Vulkan lists every card, the NVIDIA one too: pin the model to the chosen card
+                device = local_engine.vulkan_device(exe, dll_dirs, hardware["card"]["name"])
             server = local_engine.LlamaServer(
-                exe, dll_dirs, model_path, cfg["context_tokens"], self.user_dir / "llama-server.log"
+                exe, dll_dirs, model_path, cfg["context_tokens"], self.user_dir / "llama-server.log",
+                device=local_engine.device_args(backend, device),
             )
             self.server = server
         try:
@@ -409,7 +445,7 @@ class Sidecar:
             session["size"] = req.get("size") or cfg["model"]
             model_path = self.resolve_model(session["size"], cfg)
             session["model"] = model_path.stem
-            session["vram_before"] = gpu.vram_mb(cfg["gpu_index"])
+            session["vram_before"] = self.vram(cfg)
             session["was_loaded"] = self.server is not None
             session["server"], session["load_seconds"] = self._ensure_server(req_id, model_path, cfg)
         else:
@@ -436,9 +472,9 @@ class Sidecar:
             before = session["vram_before"]
             unloaded = self.server is None
             if unloaded and before and not session["was_loaded"]:
-                after = local_engine.wait_vram_released(before["free"], cfg["gpu_index"])
+                after = local_engine.wait_vram_released(before["free"], lambda: self.vram(cfg))
             else:
-                after = gpu.vram_mb(cfg["gpu_index"])
+                after = self.vram(cfg)
             report.update(unloaded=unloaded, load_seconds=round(session["load_seconds"], 2),
                           vram_free_before_mb=before["free"] if before else None,
                           vram_free_after_mb=after["free"] if after else None)
@@ -761,9 +797,12 @@ class Sidecar:
         elif cmd == "status":
             emit({"id": req_id, "event": "status_info", **self.status()})
         elif cmd == "vram":
-            emit({"id": req_id, "event": "vram", "vram": gpu.vram_mb(self.config()["engine"]["gpu_index"])})
+            emit({"id": req_id, "event": "vram", "vram": self.vram(self.config()["engine"])})
         elif cmd == "set_config":
+            vendor_before = self.config()["engine"].get("gpu_vendor")
             self.save_config(req.get("config") or {})
+            if self.config()["engine"].get("gpu_vendor") != vendor_before:
+                self.unload()  # a loaded model sits on the old hardware
             self.sync_index()
             emit({"id": req_id, "event": "config", "config": self.public_config()})
         elif cmd == "unload":

@@ -1,4 +1,4 @@
-"""Unit tests without GPU or network. Run: .venv\\Scripts\\python sidecar\\tests\\test_units.py
+﻿"""Unit tests without GPU or network. Run: .venv\\Scripts\\python sidecar\\tests\\test_units.py
 
 Options:  --vector   also test the ChromaDB index (downloads the embedding model on first run)
           --claude   also translate one sentence through the Claude subscription (needs a login)
@@ -6,6 +6,7 @@ Options:  --vector   also test the ChromaDB index (downloads the embedding model
 import ast
 import csv
 import json
+import os
 import re
 import subprocess
 import sys
@@ -628,6 +629,54 @@ def test_downloads():
                and not state["broken"]["installed"])
 
 
+def test_hardware():
+    """Graphics card choice: auto detection, backend, runtime lookup and llama-server arguments."""
+    import gpu
+    import local_engine
+
+    nvidia = {"name": "NVIDIA GeForce RTX 5090", "vendor": "nvidia", "dedicated_mb": 32000, "integrated": False}
+    intel = {"name": "Intel(R) UHD Graphics 770", "vendor": "intel", "dedicated_mb": 128, "integrated": True}
+    amd = {"name": "AMD Radeon RX 7800 XT", "vendor": "amd", "dedicated_mb": 16000, "integrated": False}
+    expect("auto picks the dedicated card", gpu.resolve("auto", [nvidia, intel])["backend"] == "cuda")
+    expect("amd runs on vulkan", gpu.resolve("auto", [amd, intel])["vendor"] == "amd"
+           and gpu.resolve("auto", [amd])["backend"] == "vulkan")
+    expect("only an integrated intel card", gpu.resolve("auto", [intel])["backend"] == "vulkan")
+    expect("no card means processor", gpu.resolve("auto", [])["backend"] == "cpu")
+    chosen = gpu.resolve("intel", [nvidia, intel])
+    expect("a chosen card wins", chosen["vendor"] == "intel" and chosen["card"]["name"] == intel["name"])
+    expect("unknown choice falls back to auto", gpu.resolve("voodoo", [nvidia])["choice"] == "auto")
+    expect("every backend has a runtime download",
+           all(downloads.RUNTIME_ITEMS[b] in downloads.CATALOG for b in set(gpu.BACKENDS.values())))
+    expect("processor arguments keep the model off the card",
+           local_engine.device_args("cpu") == ["-ngl", "0", "--device", "none"])
+    expect("vulkan arguments pin the card", local_engine.device_args("vulkan", "Vulkan1")[-2:] == ["--device", "Vulkan1"]
+           and local_engine.device_args("cuda") == ["-ngl", "999"])
+
+    with tempfile.TemporaryDirectory() as work:
+        app = Path(work)
+        (app / "runtime-vulkan").mkdir()
+        (app / "runtime-vulkan" / "llama-server.exe").write_bytes(b"")
+        saved = {k: os.environ.get(k) for k in ("AI_TRANSLATE_LMSTUDIO", "AI_TRANSLATE_DATA")}
+        os.environ["AI_TRANSLATE_LMSTUDIO"] = str(app / "no-lmstudio")  # no LM Studio backends in the way
+        os.environ["AI_TRANSLATE_DATA"] = str(app / "data")
+        try:
+            exe, _ = local_engine.find_llama_server("auto", app, "vulkan")
+            expect("vulkan runtime is found", exe.parent.name == "runtime-vulkan", str(exe))
+            exe, _ = local_engine.find_llama_server("auto", app, "cpu")
+            expect("processor falls back to a gpu build", exe.parent.name == "runtime-vulkan", str(exe))
+            try:
+                local_engine.find_llama_server("auto", app, "cuda")
+                expect("cuda does not take the vulkan build", False)
+            except local_engine.EngineError:
+                pass
+        finally:
+            for key, value in saved.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+
+
 def test_ocr():
     """Layout of recognised lines, and the recogniser itself where Windows provides one."""
     import ocr
@@ -788,7 +837,7 @@ def test_i18n_switch():
 
 
 if __name__ == "__main__":
-    tests = [test_ocr, test_downloads, test_languages, test_word_list, test_checks, test_phrases,
+    tests = [test_hardware, test_ocr, test_downloads, test_languages, test_word_list, test_checks, test_phrases,
              test_prompting, test_config_and_direction, test_history_and_export, test_json_answers, test_modes,
              test_mcp, test_openrouter, test_i18n_catalog, test_i18n_switch]
     if "--vector" in sys.argv:

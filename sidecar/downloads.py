@@ -45,6 +45,36 @@ CATALOG = {
             },
         ],
     },
+    "runtime_vulkan": {
+        "kind": "runtime",
+        "folder": "runtime-vulkan",
+        "label": "llama.cpp-Laufzeit für AMD- und Intel-Grafikkarten, Vulkan ({tag})",
+        "label_values": {"tag": LLAMA_TAG},
+        "size_mb": 37,
+        "files": [
+            {
+                "name": f"llama-{LLAMA_TAG}-bin-win-vulkan-x64.zip",
+                "url": _LLAMA + f"llama-{LLAMA_TAG}-bin-win-vulkan-x64.zip",
+                "sha256": "42a6f9df608b99c1c83fcaf77284a516e3f167b32a4690f4e4e364c377547055",
+                "size_mb": 37,
+            },
+        ],
+    },
+    "runtime_cpu": {
+        "kind": "runtime",
+        "folder": "runtime-cpu",
+        "label": "llama.cpp-Laufzeit nur für den Prozessor ({tag})",
+        "label_values": {"tag": LLAMA_TAG},
+        "size_mb": 24,
+        "files": [
+            {
+                "name": f"llama-{LLAMA_TAG}-bin-win-cpu-x64.zip",
+                "url": _LLAMA + f"llama-{LLAMA_TAG}-bin-win-cpu-x64.zip",
+                "sha256": "eae1726047e0eaa707b1302929d196c999b96c2f243b21aea6e93bcebacc4e17",
+                "size_mb": 24,
+            },
+        ],
+    },
     "model_small": {
         "kind": "model",
         "label": "Gemma 4 E2B (kleines Modell, Apache-2.0)",
@@ -92,6 +122,8 @@ CATALOG = {
 CHUNK = 1 << 20
 ATTEMPTS = 6
 USER_AGENT = "AITranslate"
+# Which runtime download fits which llama.cpp backend (see gpu.BACKENDS).
+RUNTIME_ITEMS = {"cuda": "runtime", "vulkan": "runtime_vulkan", "cpu": "runtime_cpu"}
 STALLED = -1            # pseudo exit code: the .part file stopped growing
 STALL_SECONDS = 90      # no new byte for this long counts as a stalled transfer
 STALL_RESTARTS = 5

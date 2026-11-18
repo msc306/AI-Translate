@@ -56,7 +56,7 @@ def bench(model: dict) -> None:
     finally:
         t2 = time.monotonic()
         server.stop()
-        after = local_engine.wait_vram_released(before["free"], 0)
+        after = local_engine.wait_vram_released(before["free"], gpu.vram_mb)
         print(f"unload: {time.monotonic() - t2:.1f} s | graphics memory free before {before['free']} MB, after {after['free']} MB")
 
 

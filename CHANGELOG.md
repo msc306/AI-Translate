@@ -2,6 +2,15 @@
 
 All notable changes to this project.
 
+## Unreleased
+
+### New
+
+- Local models run on AMD and Intel graphics cards (llama.cpp with Vulkan) and, more slowly, on the
+  processor alone. The graphics card is detected automatically; the settings offer
+  "Hardware for local models" to choose another card or the processor, and only the matching
+  runtime is offered for download.
+
 ## 0.5.0 – 2026-11-17
 
 ### New

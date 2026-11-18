@@ -144,10 +144,10 @@ const TEXTS = {
   setup_model: ["ein Modell", "a model", "un modelo", "un modèle"],
   and: [" und ", " and ", " y ", " et "],
   setup_no_gpu: [
-    "Auf diesem PC wurde keine NVIDIA-Grafikkarte gefunden. Lokale Modelle laufen deshalb nicht; übersetzen lässt sich über einen Anbieter im Internet.",
-    "No NVIDIA graphics card was found on this PC, so local models cannot run; you can translate with an online provider.",
-    "En este PC no se ha encontrado ninguna tarjeta gráfica NVIDIA. Por eso los modelos locales no funcionan; se puede traducir con un proveedor en Internet.",
-    "Aucune carte graphique NVIDIA n’a été trouvée sur ce PC. Les modèles locaux ne fonctionnent donc pas ; la traduction reste possible avec un fournisseur en ligne."],
+    "Auf diesem PC wurde keine passende Grafikkarte gefunden. Lokale Modelle laufen dann auf dem Prozessor – das geht, ist aber langsam. Schneller geht es über einen Anbieter im Internet.",
+    "No suitable graphics card was found on this PC. Local models then run on the processor – that works but is slow. An online provider is faster.",
+    "En este PC no se ha encontrado ninguna tarjeta gráfica adecuada. Los modelos locales se ejecutan entonces en el procesador: funciona, pero es lento. Un proveedor en Internet es más rápido.",
+    "Aucune carte graphique adaptée n’a été trouvée sur ce PC. Les modèles locaux tournent alors sur le processeur – cela fonctionne, mais lentement. Un fournisseur en ligne est plus rapide."],
   downloading: ["Wird heruntergeladen …", "Downloading …", "Descargando …", "Téléchargement …"],
 
   // ---------- status line ----------
@@ -309,10 +309,29 @@ const TEXTS = {
     "Exemple : {name} sur Hugging Face. Enregistrez-y un fichier .gguf (Q4_K_M est un bon compromis) et choisissez-le avec « Parcourir »."],
   vram_line: ["Grafikspeicher: {free} von {total} MB frei", "Graphics memory: {free} of {total} MB free", "Memoria gráfica: {free} de {total} MB libres", "Mémoire graphique : {free} sur {total} Mo libres"],
   no_gpu: [
-    "Keine NVIDIA-Grafikkarte gefunden. Lokale Modelle brauchen eine; ohne sie bleiben die Anbieter im Internet.",
-    "No NVIDIA graphics card found. Local models need one; without it the online providers remain.",
-    "No se ha encontrado ninguna tarjeta gráfica NVIDIA. Los modelos locales la necesitan; sin ella quedan los proveedores en Internet.",
-    "Aucune carte graphique NVIDIA trouvée. Les modèles locaux en ont besoin ; sans elle, il reste les fournisseurs en ligne."],
+    "Der Grafikspeicher dieser Karte lässt sich nicht abfragen. Wähle oben eine andere Karte oder „Nur Prozessor“.",
+    "The graphics memory of this card cannot be queried. Choose another card above or “Processor only”.",
+    "No se puede consultar la memoria gráfica de esta tarjeta. Elija arriba otra tarjeta o «Solo procesador».",
+    "La mémoire graphique de cette carte ne peut pas être interrogée. Choisissez ci-dessus une autre carte ou « Processeur uniquement »."],
+  cpu_line: [
+    "Die Modelle laufen auf dem Prozessor. Das geht ohne Grafikkarte, ist aber deutlich langsamer; das kleine Modell ist dafür die beste Wahl.",
+    "The models run on the processor. That works without a graphics card but is much slower; the small model is the best choice for it.",
+    "Los modelos se ejecutan en el procesador. Funciona sin tarjeta gráfica, pero es mucho más lento; el modelo pequeño es la mejor opción.",
+    "Les modèles tournent sur le processeur. Cela fonctionne sans carte graphique, mais bien plus lentement ; le petit modèle est le meilleur choix."],
+  gpu_label: ["Hardware für lokale Modelle", "Hardware for local models", "Hardware para modelos locales", "Matériel pour les modèles locaux"],
+  gpu_auto: ["Automatisch ({name})", "Automatic ({name})", "Automático ({name})", "Automatique ({name})"],
+  gpu_nvidia: ["NVIDIA-Grafikkarte (CUDA)", "NVIDIA graphics card (CUDA)", "Tarjeta gráfica NVIDIA (CUDA)", "Carte graphique NVIDIA (CUDA)"],
+  gpu_amd: ["AMD-Grafikkarte (Vulkan)", "AMD graphics card (Vulkan)", "Tarjeta gráfica AMD (Vulkan)", "Carte graphique AMD (Vulkan)"],
+  gpu_intel: ["Intel-Grafikkarte (Vulkan)", "Intel graphics card (Vulkan)", "Tarjeta gráfica Intel (Vulkan)", "Carte graphique Intel (Vulkan)"],
+  gpu_cpu: ["Nur Prozessor (langsam)", "Processor only (slow)", "Solo procesador (lento)", "Processeur uniquement (lent)"],
+  gpu_not_found: ["nicht gefunden", "not found", "no encontrada", "introuvable"],
+  gpu_hint: [
+    "Worauf das lokale Modell rechnet. „Automatisch“ nimmt die stärkste gefundene Karte. NVIDIA nutzt CUDA, AMD und Intel nutzen Vulkan; jede Variante braucht ihre eigene Laufzeit, die unten zum Herunterladen erscheint.",
+    "What the local model runs on. “Automatic” takes the strongest card found. NVIDIA uses CUDA, AMD and Intel use Vulkan; each needs its own runtime, which is offered for download below.",
+    "Dónde calcula el modelo local. «Automático» usa la tarjeta más potente encontrada. NVIDIA usa CUDA, AMD e Intel usan Vulkan; cada variante necesita su propio entorno, que aparece abajo para descargar.",
+    "Ce sur quoi le modèle local calcule. « Automatique » prend la carte la plus puissante trouvée. NVIDIA utilise CUDA, AMD et Intel utilisent Vulkan ; chaque variante a besoin de son propre moteur, proposé ci-dessous au téléchargement."],
+  gpu_cards: ["Gefunden: {cards}", "Found: {cards}", "Encontradas: {cards}", "Trouvées : {cards}"],
+  gpu_no_cards: ["Keine Grafikkarte gefunden.", "No graphics card found.", "No se ha encontrado ninguna tarjeta gráfica.", "Aucune carte graphique trouvée."],
   no_runtime: [
     "llama-server wurde nicht gefunden. Die Laufzeit lässt sich unten herunterladen.",
     "llama-server was not found. The runtime can be downloaded below.",
@@ -333,6 +352,16 @@ const TEXTS = {
     "Why: the runtime is the program that runs a model on the graphics card. Without it no local model can start.",
     "Para qué: el entorno es el programa que ejecuta un modelo en la tarjeta gráfica. Sin él no arranca ningún modelo local.",
     "Pourquoi : le moteur est le programme qui exécute un modèle sur la carte graphique. Sans lui, aucun modèle local ne démarre."],
+  why_runtime_vulkan: [
+    "Wozu: Diese Laufzeit führt das Modell über Vulkan auf AMD- und Intel-Grafikkarten aus, auch auf der Grafik im Prozessor. Ohne sie startet kein lokales Modell.",
+    "Why: this runtime runs the model through Vulkan on AMD and Intel graphics cards, including graphics built into the processor. Without it no local model can start.",
+    "Para qué: este entorno ejecuta el modelo mediante Vulkan en tarjetas gráficas AMD e Intel, también en la gráfica integrada del procesador. Sin él no arranca ningún modelo local.",
+    "Pourquoi : ce moteur exécute le modèle via Vulkan sur les cartes graphiques AMD et Intel, y compris la puce graphique du processeur. Sans lui, aucun modèle local ne démarre."],
+  why_runtime_cpu: [
+    "Wozu: Diese Laufzeit führt das Modell nur auf dem Prozessor aus, für PCs ohne passende Grafikkarte. Ohne sie startet kein lokales Modell.",
+    "Why: this runtime runs the model on the processor only, for PCs without a suitable graphics card. Without it no local model can start.",
+    "Para qué: este entorno ejecuta el modelo solo en el procesador, para PC sin tarjeta gráfica adecuada. Sin él no arranca ningún modelo local.",
+    "Pourquoi : ce moteur exécute le modèle uniquement sur le processeur, pour les PC sans carte graphique adaptée. Sans lui, aucun modèle local ne démarre."],
   why_model_small: [
     "Wozu: Das Modell übersetzt direkt auf diesem PC – ohne Internet, ohne Konto, und der Text verlässt den Rechner nicht. Es ist das kleinste und schnellste.",
     "Why: the model translates right on this PC – no internet, no account, and the text never leaves the computer. It is the smallest and fastest one.",

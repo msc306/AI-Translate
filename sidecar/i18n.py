@@ -93,10 +93,14 @@ CATALOG = {
         "es": "No se encontró ningún modelo para el tamaño '{size}'. Puedes elegir un archivo de modelo en los ajustes.",
         "fr": "Aucun modèle trouvé pour la taille '{size}'. Vous pouvez choisir un fichier de modèle dans les paramètres.",
     },
-    "Keine NVIDIA-Grafikkarte abfragbar (nvidia-smi).": {
-        "en": "No NVIDIA graphics card could be queried (nvidia-smi).",
-        "es": "No se pudo consultar ninguna tarjeta gráfica NVIDIA (nvidia-smi).",
-        "fr": "Aucune carte graphique NVIDIA n'a pu être interrogée (nvidia-smi).",
+    "Die Grafikkarte ({vendor}) lässt sich nicht abfragen. In den Einstellungen unter „Lokale Modelle“ "
+    "lässt sich eine andere Karte oder der Prozessor wählen.": {
+        "en": "The graphics card ({vendor}) cannot be queried. Under “Local models” in the settings you can "
+              "choose another card or the processor.",
+        "es": "No se puede consultar la tarjeta gráfica ({vendor}). En los ajustes, en «Modelos locales», "
+              "puede elegir otra tarjeta o el procesador.",
+        "fr": "La carte graphique ({vendor}) ne peut pas être interrogée. Dans les paramètres, sous « Modèles "
+              "locaux », vous pouvez choisir une autre carte ou le processeur.",
     },
     "Zu wenig freier VRAM: {free} MB frei, benötigt werden {need} MB plus {reserve} MB Reserve.": {
         "en": "Not enough free VRAM: {free} MB free, {need} MB needed plus a reserve of {reserve} MB.",
@@ -359,6 +363,16 @@ CATALOG = {
         "en": "llama.cpp runtime for NVIDIA graphics cards ({tag})",
         "es": "Entorno de ejecución de llama.cpp para tarjetas gráficas NVIDIA ({tag})",
         "fr": "Environnement d'exécution llama.cpp pour cartes graphiques NVIDIA ({tag})",
+    },
+    "llama.cpp-Laufzeit für AMD- und Intel-Grafikkarten, Vulkan ({tag})": {
+        "en": "llama.cpp runtime for AMD and Intel graphics cards, Vulkan ({tag})",
+        "es": "Entorno de ejecución de llama.cpp para tarjetas gráficas AMD e Intel, Vulkan ({tag})",
+        "fr": "Environnement d'exécution llama.cpp pour cartes graphiques AMD et Intel, Vulkan ({tag})",
+    },
+    "llama.cpp-Laufzeit nur für den Prozessor ({tag})": {
+        "en": "llama.cpp runtime for the processor only ({tag})",
+        "es": "Entorno de ejecución de llama.cpp solo para el procesador ({tag})",
+        "fr": "Environnement d'exécution llama.cpp pour le processeur uniquement ({tag})",
     },
     "Gemma 4 E2B (kleines Modell, Apache-2.0)": {
         "en": "Gemma 4 E2B (small model, Apache-2.0)",

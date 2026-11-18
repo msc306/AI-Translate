@@ -85,6 +85,10 @@ Erledigtes wird abgehakt, Neues unten angehängt.
       Sidecar auf (`sidecar/speech.py`, winmm) und erkennen mit whisper.cpp oder der Windows-Spracherkennung;
       whisper.cpp und Sprachmodell als Download, anderes Modell wählbar (`config.speech`). Vorlesen von
       Eingabe und Übersetzung mit `speechSynthesis` im Fenster.
+- [x] A11 Grafikkarten von NVIDIA, AMD und Intel sowie reiner Prozessor: `sidecar/gpu.py` erkennt die Karten
+      (DXGI) und wählt automatisch; Einstellung `engine.gpu_vendor` (auto/nvidia/amd/intel/cpu). NVIDIA läuft
+      mit der CUDA-Laufzeit, AMD und Intel mit Vulkan (`--device VulkanN`, Zuordnung über den Namen), der
+      Prozessor mit `-ngl 0`. Angeboten wird nur der Laufzeit-Download, der zur Wahl passt.
 
 ### B. Aus dem Kurs übernommen
 
