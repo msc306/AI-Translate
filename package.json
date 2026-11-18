@@ -4,7 +4,7 @@
   "description": "Docked desktop translator for Windows with local and cloud models",
   "license": "MIT",
   "repository": "github:msc306/AI-Translate",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "scripts": {
     "tauri": "tauri",
     "dev": "tauri dev",
