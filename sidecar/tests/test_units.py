@@ -630,7 +630,20 @@ def test_downloads():
 
 
 def test_hardware():
-    """Graphics card choice: auto detection, backend, runtime lookup and llama-server arguments."""
+    """Graphics card choice on Windows, also when the tests run on a Mac or Linux."""
+    import local_engine
+    import platform_info
+
+    saved = (platform_info.SYSTEM, local_engine.SERVER_EXE)
+    platform_info.SYSTEM, local_engine.SERVER_EXE = "windows", "llama-server.exe"
+    try:
+        _check_windows_hardware()
+    finally:
+        platform_info.SYSTEM, local_engine.SERVER_EXE = saved
+
+
+def _check_windows_hardware():
+    """Auto detection, backend, runtime lookup and llama-server arguments."""
     import gpu
     import local_engine
 

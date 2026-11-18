@@ -333,6 +333,8 @@ def read_image(path: str = "", clipboard: bool = False, lang: str = "") -> dict:
     Returns {"text", "lang", "matched", "available"}; `matched` says whether the requested
     language was installed. Raises OcrError with a message for the user.
     """
+    if not clipboard and not Path(path).is_file():
+        raise OcrError("no_file")
     system = platform_info.system()
     if system == "macos":
         return _read_image_mac(path, clipboard, lang)
