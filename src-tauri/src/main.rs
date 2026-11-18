@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(windows)]
 mod appbar;
 mod layout;
 mod sidecar;
@@ -83,12 +84,7 @@ fn release_appbar(app: &AppHandle) {
     let Some(window) = app.get_webview_window("main") else { return };
     let state = app.state::<AppState>();
     let mut registered = state.registered.lock().unwrap();
-    if *registered {
-        if let Some(handle) = layout::hwnd(&window) {
-            appbar::remove(handle);
-        }
-        *registered = false;
-    }
+    layout::release(&window, &mut registered);
 }
 
 fn hide(app: &AppHandle) {
@@ -269,8 +265,25 @@ fn open_url(url: String) -> Result<(), String> {
     if !url.starts_with("https://") || url.chars().any(|c| c.is_control() || c == '"') {
         return Err("only https addresses can be opened".into());
     }
-    std::process::Command::new("rundll32")
-        .args(["url.dll,FileProtocolHandler", &url])
+    #[cfg(windows)]
+    let mut command = {
+        let mut c = std::process::Command::new("rundll32");
+        c.args(["url.dll,FileProtocolHandler", &url]);
+        c
+    };
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut c = std::process::Command::new("/usr/bin/open");
+        c.arg(&url);
+        c
+    };
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let mut command = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(&url);
+        c
+    };
+    command
         .spawn()
         .map(|_| ())
         .map_err(|e| e.to_string())

@@ -645,8 +645,9 @@ def test_hardware():
     chosen = gpu.resolve("intel", [nvidia, intel])
     expect("a chosen card wins", chosen["vendor"] == "intel" and chosen["card"]["name"] == intel["name"])
     expect("unknown choice falls back to auto", gpu.resolve("voodoo", [nvidia])["choice"] == "auto")
-    expect("every backend has a runtime download",
-           all(downloads.RUNTIME_ITEMS[b] in downloads.CATALOG for b in set(gpu.BACKENDS.values())))
+    windows_items = downloads.runtime_items("windows", "x64")
+    expect("every windows backend has a runtime download",
+           all(windows_items[gpu.BACKENDS[v]] in downloads.CATALOG for v in ("nvidia", "amd", "intel", "cpu")))
     expect("processor arguments keep the model off the card",
            local_engine.device_args("cpu") == ["-ngl", "0", "--device", "none"])
     expect("vulkan arguments pin the card", local_engine.device_args("vulkan", "Vulkan1")[-2:] == ["--device", "Vulkan1"]
@@ -675,6 +676,151 @@ def test_hardware():
                     os.environ.pop(key, None)
                 else:
                     os.environ[key] = value
+
+
+def test_platform():
+    """macOS and Linux paths with an injected platform: they cannot run on this Windows PC."""
+    import gpu
+    import local_engine
+    import platform_info
+    import speech
+    import tarfile
+    import io
+
+    expect("describe apple silicon", platform_info.describe("macos", "arm64")
+           == {"os": "macos", "arch": "arm64", "label": "macOS (Apple Silicon)"})
+    expect("describe intel mac", platform_info.describe("macos", "x64")["label"] == "macOS (Intel)")
+    expect("describe windows", platform_info.describe("windows", "x64")["label"] == "Windows (x64)")
+    here = platform_info.describe()
+    expect("describe this machine", here["os"] in ("windows", "macos", "linux") and here["arch"] in ("arm64", "x64"))
+    expect("exe names", platform_info.exe_name("llama-server", "windows") == "llama-server.exe"
+           and platform_info.exe_name("llama-server", "macos") == "llama-server")
+
+    home = Path("/Users/test")
+    mac_dir = home / "Library" / "Application Support" / "AITranslate"
+    expect("mac config folder", platform_info.config_dir("macos", {}, home) == mac_dir)
+    expect("mac data folder", platform_info.data_dir("macos", {}, home) == mac_dir)
+    expect("data override wins on mac",
+           platform_info.data_dir("macos", {"AI_TRANSLATE_DATA": "/x"}, home) == Path("/x"))
+    expect("windows folders unchanged",
+           platform_info.config_dir("windows", {"APPDATA": r"C:\R"}, home) == Path(r"C:\R") / "AITranslate"
+           and platform_info.data_dir("windows", {"LOCALAPPDATA": r"C:\L"}, home) == Path(r"C:\L") / "AITranslate")
+    expect("linux xdg folders",
+           platform_info.config_dir("linux", {"XDG_CONFIG_HOME": "/c"}, home) == Path("/c/AITranslate")
+           and platform_info.data_dir("linux", {}, home) == home / ".local" / "share" / "AITranslate")
+
+    # graphics: an Apple Silicon Mac
+    card = gpu.mac_card("Apple M3 Pro\n", str(36 * 2**30))
+    expect("apple card", card["vendor"] == "apple" and card["name"] == "Apple M3 Pro" and card["dedicated_mb"] == 36864)
+    on_mac = gpu.resolve("auto", [card], system="macos")
+    expect("apple silicon uses metal", on_mac["vendor"] == "apple" and on_mac["backend"] == "metal")
+    expect("nvidia on a mac falls back to auto", gpu.resolve("nvidia", [card], system="macos")["vendor"] == "apple")
+    expect("intel mac runs on the processor", gpu.resolve("auto", [], system="macos")["backend"] == "cpu")
+    expect("apple on windows falls back to auto", gpu.resolve("apple", [], system="windows")["choice"] == "auto")
+    expect("processor can be chosen on a mac", gpu.resolve("cpu", [card], system="macos")["backend"] == "cpu")
+    vm_stat = ("Mach Virtual Memory Statistics: (page size of 16384 bytes)\n"
+               "Pages free:                               100000.\nPages active:  5.\n"
+               "Pages inactive:                           50000.\n")
+    state = gpu.mac_vram(32 * 2**30, vm_stat)
+    expect("unified memory budget is 75 percent", state["total"] == 24576)
+    expect("free memory from vm_stat", state["free"] == 150000 * 16384 // 2**20, str(state))
+    expect("free memory capped at the budget", gpu.mac_vram(8 * 2**30, vm_stat.replace("100000", "9000000"))["free"] == 6144)
+    expect("metal offloads every layer", local_engine.device_args("metal") == ["-ngl", "999"])
+
+    # downloads per platform
+    mac_arm = downloads.runtime_items("macos", "arm64")
+    expect("apple silicon runtime", mac_arm == {"metal": "runtime_metal", "cpu": "runtime_metal"})
+    expect("intel mac runtime", downloads.runtime_items("macos", "x64") == {"cpu": "runtime_mac_cpu"})
+    arm_catalog = downloads.platform_catalog("macos", "arm64")
+    expect("mac offers no windows downloads", not {"runtime", "runtime_vulkan", "runtime_cpu", "whisper"} & set(arm_catalog))
+    expect("apple silicon offers metal only", "runtime_metal" in arm_catalog and "runtime_mac_cpu" not in arm_catalog)
+    expect("mac keeps models", {"model_small", "speech_model"} <= set(arm_catalog))
+    win_catalog = downloads.platform_catalog("windows", "x64")
+    expect("windows offers no mac downloads", not {"runtime_metal", "runtime_mac_cpu"} & set(win_catalog)
+           and {"runtime", "runtime_vulkan", "runtime_cpu", "whisper"} <= set(win_catalog))
+    metal = downloads.CATALOG["runtime_metal"]["files"][0]
+    expect("metal archive pinned", metal["sha256"].startswith("e815561e") and metal["name"].endswith("macos-arm64.tar.gz"))
+    expect("mac runtimes have labels", all(i18n.CATALOG.get(downloads.CATALOG[k]["label"])
+                                           for k in ("runtime_metal", "runtime_mac_cpu")))
+    expect("mac backends search mac folders", local_engine.fallback_backends("cpu", "macos") == ["cpu", "metal"]
+           and local_engine.fallback_backends("cpu", "windows") == ["cpu", "vulkan", "cuda"])
+
+    # a macOS .tar.gz like llama.cpp's: flat folder, dylib symlinks, and hostile members
+    def add(bundle, name, data=b"", mode=0o644, link=None, kind=tarfile.REGTYPE):
+        info = tarfile.TarInfo(name)
+        info.mode = mode
+        info.type = kind
+        if link is not None:
+            info.linkname = link
+        else:
+            info.size = len(data)
+        bundle.addfile(info, io.BytesIO(data) if link is None else None)
+
+    with tempfile.TemporaryDirectory() as work:
+        work = Path(work)
+        archive = work / "llama-b12360-bin-macos-arm64.tar.gz"
+        with tarfile.open(archive, "w:gz") as bundle:
+            add(bundle, "llama-b12360/", kind=tarfile.DIRTYPE, mode=0o755)
+            add(bundle, "llama-b12360/llama-server", b"#!binary", 0o755)
+            add(bundle, "llama-b12360/libggml.1.0.0.dylib", b"DYLIB")
+            add(bundle, "llama-b12360/libggml.1.dylib", link="libggml.1.0.0.dylib", kind=tarfile.SYMTYPE)
+            add(bundle, "llama-b12360/libggml.dylib", link="libggml.1.dylib", kind=tarfile.SYMTYPE)
+            add(bundle, "llama-b12360/evil.dylib", link="../../../etc/passwd", kind=tarfile.SYMTYPE)
+            add(bundle, "llama-b12360/abs.dylib", link="/etc/passwd", kind=tarfile.SYMTYPE)
+            add(bundle, "llama-b12360/../escape.txt", b"x")
+            add(bundle, "llama-b12360/fifo", kind=tarfile.FIFOTYPE)
+        target = work / "data" / "runtime-metal"
+        downloads._install_runtime([archive], target, "llama-server")
+        expect("tar: llama-server installed", (target / "llama-server").read_bytes() == b"#!binary")
+        expect("tar: dylib chain usable", (target / "libggml.dylib").read_bytes() == b"DYLIB"
+               and (target / "libggml.1.dylib").read_bytes() == b"DYLIB")
+        expect("tar: escaping links skipped", not (target / "evil.dylib").exists() and not (target / "abs.dylib").exists())
+        expect("tar: traversal skipped", not (work / "data" / "escape.txt").exists() and not (target / "fifo").exists())
+        expect("tar: no staging left", not (work / "data" / "runtime-metal.new").exists())
+        broken = work / "broken.tar.gz"
+        with tarfile.open(broken, "w:gz") as bundle:
+            add(bundle, "llama-b12360/libggml.dylib", b"x")
+        try:
+            downloads._install_runtime([broken], work / "data" / "runtime-x", "llama-server")
+            expect("tar without llama-server fails", False)
+        except downloads.DownloadError:
+            expect("tar without llama-server fails", not (work / "data" / "runtime-x").exists())
+
+    # speech input on a Mac
+    found = {"ffmpeg": "/opt/homebrew/bin/ffmpeg"}
+    command = speech.recorder_command(Path("/tmp/a.wav"), "macos", found.get)
+    expect("mac records with ffmpeg avfoundation", command[0] == "/opt/homebrew/bin/ffmpeg"
+           and command[command.index("-f") + 1] == "avfoundation" and "16000" in command)
+    sox = speech.recorder_command(Path("/tmp/a.wav"), "macos", {"rec": "/usr/local/bin/rec"}.get)
+    expect("mac falls back to sox", sox[0] == "/usr/local/bin/rec")
+    expect("no recorder is reported", speech.recording_problem("macos", {}.get).startswith("Für die Aufnahme fehlt")
+           and speech.recording_problem("windows") == "")
+
+    # OCR boxes from Vision (normalized, origin bottom left) to pixels with origin top left
+    box = ocr.vision_box({"bx": 0.1, "by": 0.8, "bw": 0.5, "bh": 0.1}, 1000, 500)
+    expect("vision box to pixels", box == {"x": 100, "y": 50, "w": 500, "h": 50}, str(box))
+    lines = ocr.mac_lines({"width": 1000, "height": 1000, "lines": [
+        {"text": "First line", "bx": 0.1, "by": 0.85, "bw": 0.4, "bh": 0.05},
+        {"text": "second line", "bx": 0.1, "by": 0.78, "bw": 0.4, "bh": 0.05}]})
+    expect("vision lines keep reading order", lines[0]["y"] < lines[1]["y"]
+           and "First line" in ocr.layout_text(lines, "en-US"))
+
+    # status_info reports the platform
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as work:
+        config = Path(work) / "config.json"
+        config.write_text(json.dumps({"memory": {"vector": False}}), encoding="utf-8")
+        saved = os.environ.get("AI_TRANSLATE_DATA")
+        os.environ["AI_TRANSLATE_DATA"] = str(Path(work) / "data")
+        try:
+            car = sidecar_main.Sidecar(APP_DIR, config)
+            info = car.status()
+            expect("status_info has platform", info.get("platform") == platform_info.describe())
+            expect("speech_info says whether it can record", "can_record" in info["speech"])
+        finally:
+            if saved is None:
+                os.environ.pop("AI_TRANSLATE_DATA", None)
+            else:
+                os.environ["AI_TRANSLATE_DATA"] = saved
 
 
 def test_ocr():
@@ -837,7 +983,7 @@ def test_i18n_switch():
 
 
 if __name__ == "__main__":
-    tests = [test_hardware, test_ocr, test_downloads, test_languages, test_word_list, test_checks, test_phrases,
+    tests = [test_hardware, test_platform, test_ocr, test_downloads, test_languages, test_word_list, test_checks, test_phrases,
              test_prompting, test_config_and_direction, test_history_and_export, test_json_answers, test_modes,
              test_mcp, test_openrouter, test_i18n_catalog, test_i18n_switch]
     if "--vector" in sys.argv:

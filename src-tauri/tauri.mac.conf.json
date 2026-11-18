@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "publisher": "Marius Schuhn",
+    "homepage": "https://github.com/msc306/AI-Translate",
+    "copyright": "Copyright (c) 2026 Marius Schuhn",
+    "license": "MIT",
+    "licenseFile": "../LICENSE",
+    "category": "Productivity",
+    "shortDescription": "Docked desktop translator with local and cloud models",
+    "icon": ["icons/icon.icns", "icons/icon.png"],
+    "resources": {
+      "../build/bundle/": ""
+    },
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "signingIdentity": "-"
+    }
+  }
+}

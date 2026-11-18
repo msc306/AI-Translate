@@ -636,11 +636,9 @@ function fillVoices() {
 function renderSpeechSettings(info) {
   const speechInfo = info.speech || {};
   const config = info.config.speech || {};
-  fillSelect($("set-speech-engine"), [
-    ["auto", t("speech_engine_auto")],
-    ["whisper", t("speech_engine_whisper")],
-    ["windows", t("speech_engine_windows")],
-  ], config.engine || "auto");
+  const engines = [["auto", t("speech_engine_auto")], ["whisper", t("speech_engine_whisper")]];
+  if (info.platform?.os !== "macos") engines.push(["windows", t("speech_engine_windows")]);
+  fillSelect($("set-speech-engine"), engines, config.engine || "auto");
   const models = speechInfo.models || [];
   const configured = config.model || "auto";
   const autoName = speechInfo.auto_model || "";
@@ -655,6 +653,7 @@ function renderSpeechSettings(info) {
   else if ((speechInfo.windows || []).length) {
     status = t("speech_ready_windows", { languages: speechInfo.windows.join(", ") });
   }
+  if (speechInfo.record_problem) status += "\n" + speechInfo.record_problem;
   $("speech-status").textContent = status;
   fillVoices();
 }
@@ -799,7 +798,9 @@ function renderGpu(info) {
   if (!gpu) return;
   const cards = gpu.cards || [];
   const vendorName = (vendor) => t("gpu_" + vendor);
-  const options = ["auto", "nvidia", "amd", "intel", "cpu"].map((choice) => {
+  const mac = info.platform?.os === "macos";
+  const choices = mac ? ["auto", "apple", "cpu"] : ["auto", "nvidia", "amd", "intel", "cpu"];
+  const options = choices.map((choice) => {
     let label;
     if (choice === "auto") label = t("gpu_auto", { name: gpu.card?.name || t("gpu_cpu") });
     else label = vendorName(choice);
@@ -811,9 +812,12 @@ function renderGpu(info) {
   const select = $("set-gpu");
   select.replaceChildren(...options);
   select.value = gpu.choice || "auto";
-  $("set-gpu-cards").textContent = cards.length
+  const cardLine = cards.length
     ? t("gpu_cards", { cards: cards.map((c) => c.name).join(", ") })
     : t("gpu_no_cards");
+  $("set-gpu-cards").textContent = info.platform?.label
+    ? `${t("platform_line", { label: info.platform.label })}\n${cardLine}`
+    : cardLine;
 }
 
 // ---------- First start and downloads ----------
@@ -1352,7 +1356,7 @@ async function init() {
     readScreenshot();
   });
   $("input").addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); translate(); }
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); translate(); }
   });
 
   $("btn-translate").onclick = () => translate();

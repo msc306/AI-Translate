@@ -1,7 +1,7 @@
 # AI Translate
 
-**AI Translate** is a small translator for the Windows desktop that docks to the screen edge like a
-second taskbar. It translates with a model on your own graphics card or through an online provider,
+**AI Translate** is a small translator for the Windows and macOS desktop that docks to the screen
+edge like a second taskbar. It translates with a model on your own graphics card or through an online provider,
 knows idioms through a phrase memory, and frees the graphics memory again after every translation.
 The interface is available in German, English, Spanish and French.
 
@@ -75,9 +75,19 @@ running from source.
 AI Translate takes over the settings, history, runtime and models of the old version. The old
 version can then be uninstalled under Windows Settings → Apps.
 
+### macOS (preview)
+
+The Mac version is built by `scripts/build-mac.sh` (Apple Silicon: `arm64`, Intel: `x64`) or by the
+GitHub workflow `build-mac.yml` and has not been tested on a real Mac yet. The app detects at start
+whether it runs on Apple Silicon or Intel and offers the matching llama.cpp runtime (Metal or
+processor only). The `.dmg` is not signed: after copying the app to Applications, open it once with
+right-click → Open. Screenshots are read with the macOS text recogniser (Vision). Speech input needs
+`brew install ffmpeg whisper-cpp`; macOS asks for microphone access on first use. Settings and data
+are kept in `~/Library/Application Support/AITranslate`.
+
 ## Requirements
 
-- Windows 10/11 (64-bit)
+- Windows 10/11 (64-bit) or macOS 12 or later (Apple Silicon or Intel)
 - For local models: a graphics card with a current driver – NVIDIA (CUDA), AMD or Intel (Vulkan),
   about 5 GB of graphics memory is enough for the small model – or, more slowly, just the processor. If [LM Studio](https://lmstudio.ai) is installed, its llama.cpp
   runtime and models are found automatically.

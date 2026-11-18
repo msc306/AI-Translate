@@ -1,6 +1,6 @@
 # AI Translate
 
-Desktop-Übersetzer für Windows: ein schmales Dock-Fenster (Tauri 2) mit einem Python-Sidecar, das lokal über
+Desktop-Übersetzer für Windows und macOS: ein schmales Dock-Fenster (Tauri 2) mit einem Python-Sidecar, das lokal über
 `llama-server` oder über einen Cloud-Anbieter übersetzt. Ein Phrasengedächtnis sorgt dafür, dass Redewendungen
 und eigene Korrekturen sinngemäß statt wörtlich übersetzt werden.
 
@@ -89,6 +89,12 @@ Erledigtes wird abgehakt, Neues unten angehängt.
       (DXGI) und wählt automatisch; Einstellung `engine.gpu_vendor` (auto/nvidia/amd/intel/cpu). NVIDIA läuft
       mit der CUDA-Laufzeit, AMD und Intel mit Vulkan (`--device VulkanN`, Zuordnung über den Namen), der
       Prozessor mit `-ngl 0`. Angeboten wird nur der Laufzeit-Download, der zur Wahl passt.
+- [ ] A12 macOS (Apple Silicon und Intel): `sidecar/platform_info.py` erkennt beim Start System und Prozessor
+      (`status_info.platform`). Auf dem Mac: Metal-Laufzeit bzw. Prozessor-Laufzeit für Intel-Macs,
+      Texterkennung mit Vision (JXA), Aufnahme mit ffmpeg/SoX, whisper.cpp aus Homebrew, Daten in
+      `~/Library/Application Support/AITranslate`. Das Fenster dockt als Leiste im Arbeitsbereich an.
+      Gebaut wird mit `scripts/build-mac.sh` bzw. `.github/workflows/build-mac.yml` (ungesignierte `.dmg`).
+      Offen: auf einem echten Mac prüfen.
 
 ### B. Aus dem Kurs übernommen
 

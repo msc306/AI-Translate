@@ -11,9 +11,11 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import tarfile
 import zipfile
 from pathlib import Path
 
+import platform_info
 from i18n import tr
 
 LLAMA_TAG = "b12360"
@@ -27,6 +29,7 @@ _WHISPER_MODELS = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/"
 CATALOG = {
     "runtime": {
         "kind": "runtime",
+        "platforms": ["windows"],
         "label": "llama.cpp-Laufzeit für NVIDIA-Grafikkarten ({tag})",
         "label_values": {"tag": LLAMA_TAG},
         "size_mb": 677,
@@ -47,6 +50,7 @@ CATALOG = {
     },
     "runtime_vulkan": {
         "kind": "runtime",
+        "platforms": ["windows"],
         "folder": "runtime-vulkan",
         "label": "llama.cpp-Laufzeit für AMD- und Intel-Grafikkarten, Vulkan ({tag})",
         "label_values": {"tag": LLAMA_TAG},
@@ -62,6 +66,7 @@ CATALOG = {
     },
     "runtime_cpu": {
         "kind": "runtime",
+        "platforms": ["windows"],
         "folder": "runtime-cpu",
         "label": "llama.cpp-Laufzeit nur für den Prozessor ({tag})",
         "label_values": {"tag": LLAMA_TAG},
@@ -72,6 +77,42 @@ CATALOG = {
                 "url": _LLAMA + f"llama-{LLAMA_TAG}-bin-win-cpu-x64.zip",
                 "sha256": "eae1726047e0eaa707b1302929d196c999b96c2f243b21aea6e93bcebacc4e17",
                 "size_mb": 24,
+            },
+        ],
+    },
+    "runtime_metal": {
+        "kind": "runtime",
+        "platforms": ["macos"],
+        "machines": ["arm64"],
+        "folder": "runtime-metal",
+        "exe": "llama-server",
+        "label": "llama.cpp-Laufzeit für Mac mit Apple Silicon, Metal ({tag})",
+        "label_values": {"tag": LLAMA_TAG},
+        "size_mb": 16,
+        "files": [
+            {
+                "name": f"llama-{LLAMA_TAG}-bin-macos-arm64.tar.gz",
+                "url": _LLAMA + f"llama-{LLAMA_TAG}-bin-macos-arm64.tar.gz",
+                "sha256": "e815561e9621c606388d4538101d56fcf317cdec6ce8f2bbd1bf14f0df29925e",
+                "size_mb": 16,   # 16908185 bytes
+            },
+        ],
+    },
+    "runtime_mac_cpu": {
+        "kind": "runtime",
+        "platforms": ["macos"],
+        "machines": ["x64"],
+        "folder": "runtime-mac-cpu",
+        "exe": "llama-server",
+        "label": "llama.cpp-Laufzeit für Mac mit Intel-Prozessor ({tag})",
+        "label_values": {"tag": LLAMA_TAG},
+        "size_mb": 12,
+        "files": [
+            {
+                "name": f"llama-{LLAMA_TAG}-bin-macos-x64.tar.gz",
+                "url": _LLAMA + f"llama-{LLAMA_TAG}-bin-macos-x64.tar.gz",
+                "sha256": "ed329ff7f4048dbfbc401909926a6c6f49114fc7cb7860ed9c7976fadcc11a34",
+                "size_mb": 12,   # 12661476 bytes
             },
         ],
     },
@@ -90,6 +131,7 @@ CATALOG = {
     },
     "whisper": {
         "kind": "runtime",
+        "platforms": ["windows"],
         "folder": "whisper",
         "exe": "whisper-cli.exe",
         "label": "whisper.cpp-Spracherkennung ({tag})",
@@ -122,13 +164,54 @@ CATALOG = {
 CHUNK = 1 << 20
 ATTEMPTS = 6
 USER_AGENT = "AITranslate"
-# Which runtime download fits which llama.cpp backend (see gpu.BACKENDS).
-RUNTIME_ITEMS = {"cuda": "runtime", "vulkan": "runtime_vulkan", "cpu": "runtime_cpu"}
 STALLED = -1            # pseudo exit code: the .part file stopped growing
 STALL_SECONDS = 90      # no new byte for this long counts as a stalled transfer
 STALL_RESTARTS = 5
-NO_WINDOW = 0x08000000
-CURL = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "curl.exe"
+NO_WINDOW = platform_info.no_window_flag()
+
+
+def runtime_items(system: str | None = None, machine: str | None = None) -> dict:
+    """Which runtime download fits which llama.cpp backend (see gpu.BACKENDS) on this machine.
+
+    On an Apple Silicon Mac the Metal build also serves the processor-only setting (`-ngl 0`).
+    """
+    system = system or platform_info.system()
+    machine = machine or platform_info.machine()
+    if system == "windows":
+        return {"cuda": "runtime", "vulkan": "runtime_vulkan", "cpu": "runtime_cpu"}
+    if system == "macos":
+        if machine == "arm64":
+            return {"metal": "runtime_metal", "cpu": "runtime_metal"}
+        return {"cpu": "runtime_mac_cpu"}
+    return {}   # Linux: llama-server from PATH or a configured path
+
+
+def offered(entry: dict, system: str | None = None, machine: str | None = None) -> bool:
+    """Whether a catalog entry fits this operating system and processor."""
+    system = system or platform_info.system()
+    machine = machine or platform_info.machine()
+    return system in entry.get("platforms", [system]) and machine in entry.get("machines", [machine])
+
+
+def platform_catalog(system: str | None = None, machine: str | None = None) -> dict:
+    """The catalog entries offered on this machine."""
+    return {name: entry for name, entry in CATALOG.items() if offered(entry, system, machine)}
+
+
+RUNTIME_ITEMS = runtime_items()
+
+
+def _find_curl() -> Path:
+    """Windows' own curl.exe, or the system curl elsewhere (macOS ships /usr/bin/curl)."""
+    if platform_info.system() == "windows":
+        return Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "curl.exe"
+    if Path("/usr/bin/curl").is_file():
+        return Path("/usr/bin/curl")
+    found = shutil.which("curl")
+    return Path(found) if found else Path("/nonexistent/curl")
+
+
+CURL = _find_curl()
 
 
 class DownloadError(Exception):
@@ -145,7 +228,7 @@ class Downloader:
     def __init__(self, data_dir: Path, emit, catalog: dict | None = None, allow_http: bool = False):
         self.data_dir = Path(data_dir)
         self.emit = emit
-        self.catalog = catalog or CATALOG
+        self.catalog = catalog or platform_catalog()  # only what fits this OS and processor
         self.allow_http = allow_http  # tests only: a local server without TLS
         self.stall_seconds = STALL_SECONDS
         self.jobs: dict[str, tuple[threading.Thread, threading.Event]] = {}
@@ -245,7 +328,7 @@ class Downloader:
                          message=tr("Abgebrochen. Der bereits geladene Teil bleibt für die Fortsetzung erhalten."))
         except DownloadError as err:
             self._report(item, req_id, "error", message=str(err))
-        except (OSError, zipfile.BadZipFile) as err:
+        except (OSError, zipfile.BadZipFile, tarfile.TarError) as err:
             self._report(item, req_id, "error", message=tr("Download fehlgeschlagen: {error}", error=err))
 
     def _check_space(self, entry: dict, work: Path) -> None:
@@ -393,6 +476,9 @@ def _install_runtime(archives: list[Path], target: Path, exe_name: str = "llama-
     staging.mkdir(parents=True)
     try:
         for archive in archives:
+            if not zipfile.is_zipfile(archive):
+                _unpack_tar(archive, staging, exe_name)
+                continue
             with zipfile.ZipFile(archive) as bundle:
                 names = [n for n in bundle.namelist() if not n.endswith("/")]
                 exe = next((n for n in names if n.replace("\\", "/").split("/")[-1].lower() == exe_name), None)
@@ -414,8 +500,110 @@ def _install_runtime(archives: list[Path], target: Path, exe_name: str = "llama-
                         shutil.copyfileobj(source, out, CHUNK)
         if not (staging / exe_name).is_file():
             raise DownloadError(tr("Im Archiv fehlt {name}.", name=exe_name))
+        if os.name != "nt":
+            (staging / exe_name).chmod(0o755)
         shutil.rmtree(target, ignore_errors=True)
         staging.replace(target)
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
         raise
+
+
+def _safe_parts(relative: str) -> list[str] | None:
+    """Path parts of an archive member, or None if it would leave the target folder."""
+    clean = relative.replace("\\", "/")
+    if clean.startswith("/"):
+        return None
+    parts = [p for p in clean.split("/") if p and p != "."]
+    if not parts or any(p == ".." or ":" in p for p in parts):
+        return None
+    return parts
+
+
+def _link_target(parts: list[str], linkname: str) -> list[str] | None:
+    """Where a symlink at `parts` points, relative to the target folder; None if it escapes."""
+    if linkname.startswith("/") or "\\" in linkname or ":" in linkname:
+        return None
+    resolved = list(parts[:-1])
+    for piece in linkname.split("/"):
+        if piece in ("", "."):
+            continue
+        if piece == "..":
+            if not resolved:
+                return None
+            resolved.pop()
+        else:
+            resolved.append(piece)
+    return resolved or None
+
+
+def _unpack_tar(archive: Path, staging: Path, exe_name: str) -> None:
+    """Unpacks a llama.cpp macOS .tar.gz: the folder holding `exe_name` becomes the target folder.
+
+    The macOS builds keep llama-server next to its dylibs and versioned symlinks such as
+    libggml.dylib -> libggml.1.dylib -> libggml.1.0.0.dylib. Symlinks are recreated only when
+    they stay inside the folder; absolute links, links leaving it, device files and fifos are skipped.
+    Where symlinks cannot be created (Windows without developer mode) the linked file is copied.
+    """
+    with tarfile.open(archive, "r:*") as bundle:
+        members = bundle.getmembers()
+        exe = next((m for m in members if m.isfile() and m.name.replace("\\", "/").split("/")[-1].lower() == exe_name),
+                   None)
+        if exe is None:
+            raise DownloadError(tr("Im Archiv fehlt {name}.", name=exe_name))
+        clean_exe = exe.name.replace("\\", "/")
+        prefix = clean_exe.rsplit("/", 1)[0] + "/" if "/" in clean_exe else ""
+        links: dict[tuple, list[str]] = {}
+        for member in members:
+            clean = member.name.replace("\\", "/")
+            if not clean.startswith(prefix):
+                continue
+            parts = _safe_parts(clean[len(prefix):])
+            if parts is None:
+                continue
+            destination = staging.joinpath(*parts)
+            if member.isdir():
+                destination.mkdir(parents=True, exist_ok=True)
+            elif member.isfile():
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                source = bundle.extractfile(member)
+                if source is None:
+                    continue
+                with source, open(destination, "wb") as out:
+                    shutil.copyfileobj(source, out, CHUNK)
+                if os.name != "nt":
+                    destination.chmod(0o755 if member.mode & 0o111 else 0o644)
+            elif member.issym():
+                target = _link_target(parts, member.linkname.replace("\\", "/"))
+                if target is not None:
+                    links[tuple(parts)] = target
+            elif member.islnk():   # hard link: linkname is an archive path
+                linked = member.linkname.replace("\\", "/")
+                if linked.startswith(prefix):
+                    target = _safe_parts(linked[len(prefix):])
+                    if target is not None:
+                        links[tuple(parts)] = target
+        _make_links(staging, links)
+
+
+def _make_links(staging: Path, links: dict[tuple, list[str]]) -> None:
+    def resolve(parts: list[str], depth: int = 0) -> list[str] | None:
+        if depth > 16:
+            return None
+        nxt = links.get(tuple(parts))
+        return parts if nxt is None else resolve(nxt, depth + 1)
+
+    for parts, target in links.items():
+        destination = staging.joinpath(*parts)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        relative = os.path.relpath(staging.joinpath(*target), destination.parent).replace("\\", "/")
+        try:
+            if os.name == "nt":
+                raise OSError("no symlinks")   # keep Windows installs plain files
+            if destination.is_symlink() or destination.exists():
+                destination.unlink()
+            os.symlink(relative, destination)
+        except OSError:
+            final = resolve(list(target))
+            if final is not None and staging.joinpath(*final).is_file():
+                shutil.copy2(staging.joinpath(*final), destination)

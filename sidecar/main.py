@@ -17,18 +17,25 @@ Commands and the events that answer them:
   history_export {path, format?: csv|json|md, corrected_only?} -> exported {path, count}
   pack_install {path | url} -> pack_installed        pack_remove {pack} -> pack_removed
   pack_index -> pack_index        provider_models -> provider_models
-  download {item: runtime|runtime_vulkan|runtime_cpu|model_small|...} | download_cancel {item?}
+  download {item: runtime|runtime_vulkan|runtime_cpu|runtime_metal|runtime_mac_cpu|model_small|...}
+      | download_cancel {item?}; only items that fit this OS and processor are offered
+  status_info.platform {os: windows|macos|linux, arch: arm64|x64, label}: the machine, e.g.
+      {"os": "macos", "arch": "arm64", "label": "macOS (Apple Silicon)"}
   status_info.gpu {choice, vendor, backend, card, cards, runtime_item}: hardware for the local model,
-      chosen with set_config {config: {engine: {gpu_vendor: auto|nvidia|amd|intel|cpu}}}
+      chosen with set_config {config: {engine: {gpu_vendor: auto|nvidia|amd|intel|apple|cpu}}};
+      nvidia/amd/intel only on Windows, apple (backend metal, unified memory) only on macOS
       -> download {item, state: running|verifying|extracting|done|cancelled|error, done_mb?, total_mb?, message?}
   ocr {clipboard?: true, path?, lang?}
-      -> ocr {text, lang, matched, available}   text read from a screenshot by the Windows text recogniser
+      -> ocr {text, lang, matched, available}   text read from a screenshot by the system's text
+      recogniser (Windows.Media.Ocr on Windows, Vision on macOS)
   record_start -> recording {state: "started"}   start recording from the default microphone
   record_stop {lang?} -> recording {state: "stopped", seconds}, speech {text, engine, lang}
-      the recording is recognised by whisper.cpp or, without it, by the Windows recogniser;
+      the recording is recognised by whisper.cpp or, without it, by the Windows recogniser
+      (macOS: recorded with ffmpeg or SoX, recognised by whisper.cpp from Homebrew only);
       after two minutes the recording stops by itself and reports under the id of record_start
   record_cancel -> recording {state: "cancelled"}
-  speech_info -> speech_info {whisper, models, windows, recording}
+  speech_info -> speech_info {whisper, models, auto_model, windows, recording, can_record, record_problem}
+      can_record false with record_problem (user text) when no recorder exists (macOS without ffmpeg/SoX)
 Failures are reported as error {code, message}.
 
 Every text meant for the user (messages, labels, reasons) is in the language set by the config key
@@ -56,6 +63,7 @@ import local_engine
 import ocr
 import speech
 import phrases
+import platform_info
 import prompting
 import providers
 import textutil
@@ -294,8 +302,9 @@ class Sidecar:
         for model in models:
             model["need_mb"] = local_engine.required_vram_mb(Path(model["path"]), cfg["context_tokens"])
 
-        runtime_item = downloads.RUNTIME_ITEMS[hardware["backend"]]
+        runtime_item = downloads.RUNTIME_ITEMS.get(hardware["backend"], "")
         return {
+            "platform": platform_info.describe(),
             "vram": self.vram(cfg, hardware),
             "gpu": {**hardware, "cards": self.cards(), "runtime_item": runtime_item},
             "presets": presets,
@@ -890,12 +899,15 @@ class Sidecar:
     def speech_info(self) -> dict:
         data = local_engine.data_dir()
         auto = speech.resolve_model("auto", data)
+        problem = speech.recording_problem()
         return {
             "whisper": speech.whisper_exe(data) is not None,
             "models": speech.list_models(data),
             "auto_model": auto.stem.removeprefix("ggml-") if auto else "",
-            "windows": speech.windows_languages() if os.name == "nt" else [],
+            "windows": speech.windows_languages() if platform_info.system() == "windows" else [],
             "recording": self.recorder.recording,
+            "can_record": not problem,
+            "record_problem": problem,
         }
 
     def record_start(self, req: dict) -> None:
@@ -984,7 +996,8 @@ def stdin_lines():
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--app-dir", default=str(Path(__file__).resolve().parent.parent))
-    default_config = Path(os.environ.get("APPDATA") or Path.home()) / "AITranslate" / "config.json"
+    # Windows %APPDATA%\AITranslate, macOS ~/Library/Application Support/AITranslate, Linux $XDG_CONFIG_HOME
+    default_config = platform_info.config_dir() / "config.json"
     parser.add_argument("--config", default=str(default_config))
     args = parser.parse_args()
 

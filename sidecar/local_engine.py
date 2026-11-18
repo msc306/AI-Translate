@@ -15,10 +15,12 @@ import threading
 import time
 from pathlib import Path
 
+import platform_info
 import winjob
 from i18n import tr
 
-NO_WINDOW = 0x08000000
+NO_WINDOW = platform_info.no_window_flag()  # CREATE_NO_WINDOW on Windows, 0 elsewhere
+SERVER_EXE = platform_info.exe_name("llama-server")
 
 
 def lmstudio_dir() -> Path:
@@ -26,11 +28,12 @@ def lmstudio_dir() -> Path:
 
 
 def data_dir() -> Path:
-    """Folder for the downloaded runtime and models: large files, kept out of the roaming profile."""
-    override = os.environ.get("AI_TRANSLATE_DATA")
-    if override:
-        return Path(override)
-    return Path(os.environ.get("LOCALAPPDATA") or Path.home()) / "AITranslate"
+    """Folder for the downloaded runtime and models: large files, kept out of the roaming profile.
+
+    Windows: %LOCALAPPDATA%/AITranslate; macOS: ~/Library/Application Support/AITranslate;
+    Linux: $XDG_DATA_HOME/AITranslate. AI_TRANSLATE_DATA overrides it everywhere.
+    """
+    return platform_info.data_dir()
 
 
 class EngineError(Exception):
@@ -45,16 +48,30 @@ def _version_key(path: Path):
 
 
 # Own runtime folders and LM Studio backend folders per llama.cpp backend, in the order tried.
-RUNTIME_FOLDERS = {"cuda": ["runtime"], "vulkan": ["runtime-vulkan"], "cpu": ["runtime-cpu"]}
+# On macOS "cpu" means runtime-mac-cpu (Intel Mac) or the Metal build with no layer offloaded.
+RUNTIME_FOLDERS = {"cuda": ["runtime"], "vulkan": ["runtime-vulkan"], "metal": ["runtime-metal"],
+                   "cpu": ["runtime-cpu", "runtime-mac-cpu"]}
 LMSTUDIO_BACKENDS = {
-    "cuda": ["llama.cpp-win-x86_64-nvidia-cuda12-avx2-*"],
-    "vulkan": ["llama.cpp-win-x86_64-vulkan-avx2-*"],
-    "cpu": ["llama.cpp-win-x86_64-avx2-*"],
+    "windows": {
+        "cuda": ["llama.cpp-win-x86_64-nvidia-cuda12-avx2-*"],
+        "vulkan": ["llama.cpp-win-x86_64-vulkan-avx2-*"],
+        "cpu": ["llama.cpp-win-x86_64-avx2-*"],
+    },
+    "macos": {"metal": ["llama.cpp-mac-arm64-*metal*"]},
 }
 
 
+def fallback_backends(backend: str, system: str | None = None) -> list[str]:
+    """Backends tried in order; the processor setting also accepts any GPU build (run with -ngl 0)."""
+    if backend != "cpu":
+        return [backend]
+    if (system or platform_info.system()) == "macos":
+        return ["cpu", "metal"]
+    return ["cpu", "vulkan", "cuda"]
+
+
 def find_llama_server(configured: str, app_dir: Path, backend: str = "cuda") -> tuple[Path, list[Path]]:
-    """Searches for llama-server.exe for a backend (cuda, vulkan, cpu).
+    """Searches for llama-server(.exe) for a backend (cuda, vulkan, metal, cpu).
 
     Returns: (exe, additional DLL search paths). The processor backend also accepts any GPU build,
     since those run on the processor too when no layer is offloaded.
@@ -65,11 +82,10 @@ def find_llama_server(configured: str, app_dir: Path, backend: str = "cuda") -> 
             return exe, []
         raise EngineError("runtime_missing", tr("llama-server nicht gefunden: {path}", path=configured))
 
-    order = [backend] + (["vulkan", "cuda"] if backend == "cpu" else [])
-    for kind in order:
+    for kind in fallback_backends(backend):
         for name in RUNTIME_FOLDERS.get(kind, []):
             for folder in (app_dir / name, data_dir() / name):
-                own = folder / "llama-server.exe"
+                own = folder / SERVER_EXE
                 if own.is_file():
                     return own, []
         found = _lmstudio_server(kind)
@@ -85,11 +101,11 @@ def _lmstudio_server(backend: str) -> tuple[Path, list[Path]] | None:
     """llama-server from LM Studio's newest matching backend, with its vendor DLL folders."""
     backends = lmstudio_dir() / "extensions" / "backends"
     candidates = []
-    for pattern in LMSTUDIO_BACKENDS.get(backend, []):
+    for pattern in LMSTUDIO_BACKENDS.get(platform_info.system(), {}).get(backend, []):
         candidates += backends.glob(pattern)
     candidates.sort(key=_version_key, reverse=True)
     for folder in candidates:
-        exe = folder / "llama-server.exe"
+        exe = folder / SERVER_EXE
         if not exe.is_file():
             continue
         dll_dirs = []
@@ -108,6 +124,9 @@ def _lmstudio_server(backend: str) -> tuple[Path, list[Path]] | None:
 def _server_env(exe: Path, dll_dirs: list[Path]) -> dict:
     env = os.environ.copy()
     env["PATH"] = os.pathsep.join([*(str(d) for d in dll_dirs), str(exe.parent), env.get("PATH", "")])
+    if platform_info.system() == "macos":
+        # The macOS builds find their dylibs through @rpath next to the binary; this is a fallback.
+        env["DYLD_LIBRARY_PATH"] = os.pathsep.join([str(exe.parent), *(str(d) for d in dll_dirs)])
     return env
 
 
@@ -200,6 +219,9 @@ class LlamaServer:
             env=env,
             creationflags=NO_WINDOW,
         )
+        # Windows: a job object kills llama-server when the sidecar dies. Elsewhere bind_to_parent does
+        # nothing; stop() and the sidecar's exit end the server, and since it stays in the sidecar's
+        # process group, the shell can end both by signalling the group.
         winjob.bind_to_parent(self.proc)
 
     def wait_ready(self, cancel: threading.Event, timeout: float = 180.0) -> None:

@@ -1,9 +1,14 @@
 """Speech input: record from the default microphone and turn the recording into text.
 
-Standard library only. Recording uses the Windows multimedia API (winmm, MCI) through ctypes and
-writes a 16 kHz mono WAV file. Recognition prefers whisper.cpp (`whisper-cli.exe` plus a ggml
-model, both optional downloads); without it the speech recogniser built into Windows
+Standard library only. Windows: recording uses the Windows multimedia API (winmm, MCI) through
+ctypes and writes a 16 kHz mono WAV file. Recognition prefers whisper.cpp (`whisper-cli.exe` plus a
+ggml model, both optional downloads); without it the speech recogniser built into Windows
 (System.Speech, called through PowerShell) is used for the languages it has installed.
+
+macOS: the standard library cannot reach the microphone, so an installed recorder records it:
+ffmpeg (AVFoundation input) or SoX (`rec`), usually from Homebrew. Recognition needs whisper.cpp
+from Homebrew (`brew install whisper-cpp`, which installs `whisper-cli`); the ggml model is the
+same optional download as on Windows. There is no built-in recogniser fallback.
 """
 import array
 import base64
@@ -18,18 +23,23 @@ import time
 import wave
 from pathlib import Path
 
+import platform_info
 from i18n import tr
 
-NO_WINDOW = 0x08000000
+NO_WINDOW = platform_info.no_window_flag()  # CREATE_NO_WINDOW on Windows, 0 elsewhere
 MAX_SECONDS = 120          # a recording stops by itself after this long
 SILENCE_RMS = 120          # 16-bit samples: below this the recording counts as silence
-WHISPER_EXE = "whisper-cli.exe"
+WHISPER_EXE = platform_info.exe_name("whisper-cli")
+# Names of whisper.cpp's command-line program looked up on PATH and in Homebrew (macOS, Linux).
+WHISPER_COMMANDS = ("whisper-cli", "whisper-cpp")
 WHISPER_TIMEOUT = 300
 SAPI_TIMEOUT = 120
 
 # German source texts; tr() translates them when the error is raised.
 MESSAGES = {
-    "unsupported": "Spracheingabe gibt es nur unter Windows.",
+    "unsupported": "Spracheingabe gibt es nur unter Windows und macOS.",
+    "no_recorder": "Für die Aufnahme fehlt ein Aufnahmeprogramm. Bitte ffmpeg oder SoX installieren "
+                   "(zum Beispiel mit Homebrew: brew install ffmpeg).",
     "busy": "Es läuft bereits eine Aufnahme.",
     "not_recording": "Es läuft keine Aufnahme.",
     "microphone": "Das Mikrofon lässt sich nicht öffnen: {detail}",
@@ -37,6 +47,9 @@ MESSAGES = {
     "empty": "In der Aufnahme wurde kein Text erkannt.",
     "no_recogniser": "Für die Spracheingabe fehlt die Spracherkennung. In den Einstellungen unter "
                      "„Spracheingabe“ lassen sich whisper.cpp und ein Sprachmodell herunterladen.",
+    "no_recogniser_mac": "Für die Spracheingabe fehlt whisper.cpp. Bitte mit Homebrew installieren "
+                         "(brew install whisper-cpp) und in den Einstellungen unter „Spracheingabe“ "
+                         "ein Sprachmodell herunterladen.",
     "no_model": "Das gewählte Sprachmodell fehlt: {path}",
     "failed": "Die Spracherkennung ist fehlgeschlagen: {detail}",
 }
@@ -64,16 +77,23 @@ class Recorder:
         self.started = 0.0
         self._timer: threading.Timer | None = None
         self.on_timeout = None  # called (without arguments) when MAX_SECONDS is reached
+        self._external: ExternalRecorder | None = None  # macOS: ffmpeg or SoX process
 
     # -- public --------------------------------------------------------------------------------
 
     def start(self) -> None:
-        if os.name != "nt":
+        system = platform_info.system()
+        if system not in ("windows", "macos"):
             raise SpeechError("unsupported")
         with self._lock:
             if self.recording:
                 raise SpeechError("busy")
-            self._call(self._mci_start)
+            if system == "windows":
+                self._call(self._mci_start)
+            else:
+                external = ExternalRecorder()
+                external.start()
+                self._external = external
             self.recording = True
             self.started = time.monotonic()
             self._timer = threading.Timer(MAX_SECONDS, self._timeout)
@@ -92,7 +112,11 @@ class Recorder:
             os.close(handle)
             path = Path(name)
             try:
-                self._call(self._mci_save, path)
+                if self._external is not None:
+                    external, self._external = self._external, None
+                    external.stop(path)
+                else:
+                    self._call(self._mci_save, path)
             except Exception:
                 path.unlink(missing_ok=True)
                 raise
@@ -104,6 +128,10 @@ class Recorder:
                 return
             self._cancel_timer()
             self.recording = False
+            if self._external is not None:
+                external, self._external = self._external, None
+                external.cancel()
+                return
             try:
                 self._call(self._mci_close)
             except SpeechError:
@@ -172,6 +200,95 @@ def _mci(command: str, check: bool = True) -> str:
     return answer.value
 
 
+def recorder_command(output: Path, system: str | None = None, find=None) -> list[str] | None:
+    """Command that records the default microphone as 16 kHz mono 16-bit WAV into `output`.
+
+    macOS: ffmpeg with AVFoundation (":0" is the default audio input, no video), else SoX's `rec`.
+    `find` looks a program up (default platform_info.which); None when no recorder is installed.
+    """
+    find = find or platform_info.which
+    system = system or platform_info.system()
+    ffmpeg = find("ffmpeg")
+    if ffmpeg and system == "macos":
+        return [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "avfoundation", "-i", ":0",
+                "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", "-y", str(output)]
+    sox = find("rec")
+    if sox:
+        return [sox, "-q", "-c", "1", "-r", "16000", "-b", "16", str(output)]
+    return None
+
+
+class ExternalRecorder:
+    """A recorder program writing into a temporary WAV file; stopped with SIGINT so it closes the file."""
+
+    def __init__(self):
+        handle, name = tempfile.mkstemp(prefix="ai-translate-rec-", suffix=".wav")
+        os.close(handle)
+        self.file = Path(name)
+        self.proc: subprocess.Popen | None = None
+
+    def start(self) -> None:
+        command = recorder_command(self.file)
+        if command is None:
+            self.file.unlink(missing_ok=True)
+            raise SpeechError("no_recorder")
+        try:
+            self.proc = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                         stderr=subprocess.PIPE)
+        except OSError as err:
+            self.file.unlink(missing_ok=True)
+            raise SpeechError("microphone", detail=str(err)) from err
+        time.sleep(0.3)
+        if self.proc.poll() is not None:   # ended at once: no microphone or no permission
+            detail = self._stderr() or f"exit {self.proc.returncode}"
+            self.file.unlink(missing_ok=True)
+            raise SpeechError("microphone", detail=detail)
+
+    def stop(self, path: Path) -> None:
+        """End the recording and move the WAV file to `path`."""
+        self._end()
+        try:
+            if not self.file.is_file() or self.file.stat().st_size <= 44:
+                raise SpeechError("microphone", detail=self._stderr() or "no audio")
+            os.replace(self.file, path)
+        finally:
+            self.file.unlink(missing_ok=True)
+
+    def cancel(self) -> None:
+        self._end()
+        self.file.unlink(missing_ok=True)
+
+    def _end(self) -> None:
+        if self.proc is None or self.proc.poll() is not None:
+            return
+        import signal
+        try:
+            self.proc.send_signal(signal.SIGINT)   # ffmpeg and SoX finish the WAV header on SIGINT
+            self.proc.wait(timeout=5)
+        except (OSError, subprocess.TimeoutExpired):
+            self.proc.kill()
+            self.proc.wait(timeout=5)
+
+    def _stderr(self) -> str:
+        if self.proc is None or self.proc.stderr is None or self.proc.poll() is None:
+            return ""
+        try:
+            lines = self.proc.stderr.read().decode("utf-8", "replace").strip().splitlines()
+        except (OSError, ValueError):
+            return ""
+        return lines[-1] if lines else ""
+
+
+def recording_problem(system: str | None = None, find=None) -> str:
+    """Why speech input cannot record here, as text for the user; empty when it can."""
+    system = system or platform_info.system()
+    if system == "windows":
+        return ""
+    if system != "macos":
+        return tr(MESSAGES["unsupported"])
+    return "" if recorder_command(Path("probe.wav"), system, find) else tr(MESSAGES["no_recorder"])
+
+
 def loudness(path: Path) -> int:
     """Root mean square of a 16-bit WAV file, computed over its loudest second."""
     with wave.open(str(path), "rb") as wav:
@@ -193,8 +310,17 @@ def loudness(path: Path) -> int:
 
 
 def whisper_exe(data_dir: Path) -> Path | None:
+    """whisper.cpp's program: the download on Windows, else Homebrew or PATH (macOS, Linux)."""
     exe = Path(data_dir) / "whisper" / WHISPER_EXE
-    return exe if exe.is_file() else None
+    if exe.is_file():
+        return exe
+    if platform_info.system() == "windows":
+        return None
+    for command in WHISPER_COMMANDS:
+        found = platform_info.which(command)
+        if found:
+            return Path(found)
+    return None
 
 
 def list_models(data_dir: Path) -> list[dict]:
@@ -251,6 +377,8 @@ def transcribe(wav: Path, lang: str, data_dir: Path, model: str = "auto", engine
     if engine in ("auto", "whisper") and exe and model_path:
         text = _whisper(exe, model_path, wav, lang)
         used = "whisper"
+    elif platform_info.system() != "windows":
+        raise SpeechError("no_recogniser_mac" if platform_info.system() == "macos" else "no_recogniser")
     elif engine in ("auto", "windows"):
         culture = _pick_culture(lang, windows_languages())
         if not culture:
@@ -290,7 +418,7 @@ def _whisper(exe: Path, model: Path, wav: Path, lang: str) -> str:
     command = [str(exe), "-m", str(model), "-f", str(wav), "-l", lang or "auto", "-nt", "-np", "-t", threads]
     try:
         done = subprocess.run(command, capture_output=True, timeout=WHISPER_TIMEOUT,
-                              creationflags=NO_WINDOW if os.name == "nt" else 0, cwd=str(exe.parent))
+                              creationflags=NO_WINDOW, cwd=str(exe.parent))
     except (OSError, subprocess.TimeoutExpired) as err:
         raise SpeechError("failed", detail=str(err)) from err
     if done.returncode != 0:

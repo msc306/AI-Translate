@@ -1,24 +1,42 @@
 """Graphics card detection and VRAM queries (standard library only).
 
-Cards are found through DXGI, which every Windows graphics driver provides, so NVIDIA, AMD and
-Intel are all seen the same way. Free memory comes from nvidia-smi for NVIDIA (exact, covers all
+Windows: cards are found through DXGI, which every Windows graphics driver provides, so NVIDIA, AMD
+and Intel are all seen the same way. Free memory comes from nvidia-smi for NVIDIA (exact, covers all
 processes) and from the DXGI memory budget otherwise.
+
+macOS: an Apple Silicon Mac has exactly one GPU that shares memory with the processor (unified
+memory); llama.cpp uses it through Metal. Its name and memory come from `sysctl`. Metal lets a
+process use about 75% of the RAM as GPU working set (the "recommended max working set size"), so
+that is the total; free is what `vm_stat` reports as free plus inactive pages, capped at that total.
+An Intel Mac has no GPU llama.cpp can use well, so it runs on the processor.
 """
 from __future__ import annotations
 
 import ctypes
+import re
 import subprocess
 import sys
-from ctypes import wintypes
 
-NO_WINDOW = 0x08000000  # CREATE_NO_WINDOW
+import platform_info
+
+try:
+    from ctypes import wintypes
+except (ImportError, ValueError):  # pragma: no cover - only old Pythons off Windows
+    import types
+    wintypes = types.SimpleNamespace(DWORD=ctypes.c_uint32, LONG=ctypes.c_int32, WCHAR=ctypes.c_wchar,
+                                     UINT=ctypes.c_uint, WORD=ctypes.c_ushort, ULONG=ctypes.c_uint32)
+
+NO_WINDOW = platform_info.no_window_flag()  # CREATE_NO_WINDOW on Windows, 0 elsewhere
 
 VENDORS = {0x10DE: "nvidia", 0x1002: "amd", 0x1022: "amd", 0x8086: "intel"}
-VENDOR_NAMES = {"nvidia": "NVIDIA", "amd": "AMD", "intel": "Intel"}
+VENDOR_NAMES = {"nvidia": "NVIDIA", "amd": "AMD", "intel": "Intel", "apple": "Apple"}
 # Which llama.cpp build fits which card. Vulkan runs on every current AMD and Intel card.
-BACKENDS = {"nvidia": "cuda", "amd": "vulkan", "intel": "vulkan", "cpu": "cpu"}
-CHOICES = ("auto", "nvidia", "amd", "intel", "cpu")
+BACKENDS = {"nvidia": "cuda", "amd": "vulkan", "intel": "vulkan", "apple": "metal", "cpu": "cpu"}
+CHOICES = ("auto", "nvidia", "amd", "intel", "apple", "cpu")
+# Choices that make sense per operating system; "auto" and "cpu" work everywhere.
+PLATFORM_VENDORS = {"windows": ("nvidia", "amd", "intel"), "macos": ("apple",), "linux": ()}
 INTEGRATED_BELOW_MB = 1024   # less dedicated memory than this: graphics built into the processor
+METAL_WORKING_SET = 0.75     # share of RAM Metal recommends as GPU working set on Apple Silicon
 
 _DXGI_SOFTWARE = 2
 
@@ -131,8 +149,62 @@ def _dxgi_adapters() -> list[dict]:
     return found
 
 
+def _sysctl(name: str) -> str:
+    try:
+        out = subprocess.run(["/usr/sbin/sysctl", "-n", name], stdin=subprocess.DEVNULL, capture_output=True,
+                             text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return out.stdout.strip() if out.returncode == 0 else ""
+
+
+def mac_card(brand: str, memsize: str) -> dict | None:
+    """The Apple Silicon GPU from `sysctl -n machdep.cpu.brand_string` and `sysctl -n hw.memsize`."""
+    try:
+        memory_mb = int(memsize) // 2**20
+    except ValueError:
+        return None
+    return {"name": brand.strip() or "Apple Silicon", "vendor": "apple", "dedicated_mb": memory_mb,
+            "integrated": False, "unified": True}
+
+
+def _mac_cards() -> list[dict]:
+    if platform_info.machine() != "arm64":
+        return []   # Intel Mac: llama.cpp runs on the processor
+    card = mac_card(_sysctl("machdep.cpu.brand_string"), _sysctl("hw.memsize"))
+    return [card] if card else []
+
+
+def mac_vram(memsize_bytes: int, vm_stat_text: str) -> dict:
+    """Unified memory as {'free', 'used', 'total'} in MiB from hw.memsize and `vm_stat` output."""
+    total = int(memsize_bytes * METAL_WORKING_SET) // 2**20
+    page = 16384
+    match = re.search(r"page size of (\d+) bytes", vm_stat_text)
+    if match:
+        page = int(match.group(1))
+    pages = 0
+    for key in ("Pages free", "Pages inactive"):
+        found = re.search(rf"^{key}:\s+(\d+)", vm_stat_text, re.MULTILINE)
+        if found:
+            pages += int(found.group(1))
+    free = min(total, pages * page // 2**20)
+    return {"free": free, "used": max(0, total - free), "total": total}
+
+
+def _mac_vram() -> dict | None:
+    try:
+        memsize = int(_sysctl("hw.memsize"))
+        out = subprocess.run(["/usr/bin/vm_stat"], stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                             timeout=5)
+    except (ValueError, OSError, subprocess.TimeoutExpired):
+        return None
+    return mac_vram(memsize, out.stdout)
+
+
 def detect() -> list[dict]:
     """All graphics cards: [{name, vendor, dedicated_mb, integrated}], dedicated cards first."""
+    if platform_info.system() == "macos":
+        return _mac_cards()
     cards = []
     for card in _dxgi_adapters():
         cards.append({
@@ -153,10 +225,15 @@ def auto_vendor(cards: list[dict] | None = None) -> str:
     return "cpu"
 
 
-def resolve(choice: str, cards: list[dict] | None = None) -> dict:
-    """Effective setting for a configured choice: {choice, vendor, backend, card}."""
+def resolve(choice: str, cards: list[dict] | None = None, system: str | None = None) -> dict:
+    """Effective setting for a configured choice: {choice, vendor, backend, card}.
+
+    A vendor that does not exist on this operating system (NVIDIA on a Mac, Apple on Windows)
+    counts as "auto".
+    """
     cards = detect() if cards is None else cards
-    choice = choice if choice in CHOICES else "auto"
+    allowed = PLATFORM_VENDORS.get(system or platform_info.system(), ())
+    choice = choice if choice in ("auto", "cpu") or choice in allowed else "auto"
     vendor = auto_vendor(cards) if choice == "auto" else choice
     card = next((c for c in cards if c["vendor"] == vendor), None)
     return {"choice": choice, "vendor": vendor, "backend": BACKENDS[vendor], "card": card}
@@ -195,6 +272,8 @@ def vram_mb(gpu_index: int = 0, vendor: str = "nvidia") -> dict | None:
     """
     if vendor == "cpu":
         return None
+    if vendor == "apple":
+        return _mac_vram() if platform_info.system() == "macos" else None
     if vendor == "nvidia":
         state = _nvidia_smi(gpu_index)
         if state:

@@ -2,6 +2,18 @@
 
 All notable changes to this project.
 
+## Unreleased
+
+### New
+
+- macOS support (Apple Silicon and Intel), not yet tested on a real Mac: the app detects the system
+  and processor at start. On a Mac the local model runs with Metal (Apple Silicon) or on the
+  processor (Intel Macs), screenshots are read with the macOS Vision text recogniser, speech input
+  uses ffmpeg or SoX plus whisper.cpp from Homebrew, and the window docks as a strip at the screen
+  edge. Settings and data live in `~/Library/Application Support/AITranslate`.
+- `Cmd+Enter` translates as well as `Ctrl+Enter`.
+- Build script `scripts/build-mac.sh` and a GitHub workflow that builds unsigned `.dmg` files.
+
 ## 0.6.0 – 2026-11-18
 
 ### New

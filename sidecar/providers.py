@@ -7,13 +7,13 @@ Every engine is a generator that yields pieces of text. Token counts and costs a
 import http.client
 import json
 import os
-import shutil
 import subprocess
 import tempfile
 import threading
 import urllib.parse
 from pathlib import Path
 
+import platform_info
 import winjob
 from i18n import tr
 from local_engine import NO_WINDOW, EngineError
@@ -297,22 +297,17 @@ def openrouter(messages, cfg, cancel, usage):
 # ------------------------------------------------------------ subscription CLIs
 
 def find_cli(command: str) -> str | None:
-    """Locate a command line tool; also looks where the installers put it on Windows."""
+    """Locate a command line tool; also looks where the installers put it.
+
+    Windows: ~/.local/bin and %APPDATA%/npm. macOS: Homebrew (/opt/homebrew/bin, /usr/local/bin),
+    ~/.local/bin and ~/.npm-global/bin, since an app started from the Finder gets a minimal PATH.
+    """
     command = (command or "").strip()
     if not command:
         return None
     if Path(command).is_file():
         return command
-    found = shutil.which(command)
-    if found:
-        return found
-    home = Path.home()
-    for folder in (home / ".local" / "bin", home / "AppData" / "Roaming" / "npm"):
-        for suffix in (".exe", ".cmd", ""):
-            candidate = folder / (command + suffix)
-            if candidate.is_file():
-                return str(candidate)
-    return None
+    return platform_info.which(command)
 
 
 def _spawn(args, stdin_text, cwd, env, cancel):

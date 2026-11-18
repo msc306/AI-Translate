@@ -1,6 +1,7 @@
 //! Python sidecar: JSON lines over stdin/stdout.
 
 use std::io::{BufRead, BufReader, Write};
+#[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -9,6 +10,7 @@ use std::sync::Mutex;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
+#[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[derive(Default)]
@@ -19,7 +21,8 @@ pub struct Sidecar {
 }
 
 /// Folder that holds sidecar\main.py and packs\ (the project or installation folder).
-/// The installer puts both next to the executable, a source checkout has them a few levels up.
+/// The Windows installer puts both next to the executable, the macOS app bundle in
+/// Contents/Resources, a source checkout has them a few levels up.
 pub fn app_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("AI_TRANSLATE_DIR") {
         return PathBuf::from(dir);
@@ -29,8 +32,22 @@ pub fn app_dir() -> PathBuf {
         if dir.join("sidecar").join("main.py").is_file() {
             return dir.to_path_buf();
         }
+        let resources = dir.join("Resources");
+        if resources.join("sidecar").join("main.py").is_file() {
+            return resources;
+        }
     }
     exe.parent().map(|p| p.to_path_buf()).unwrap_or_default()
+}
+
+/// Path of the interpreter inside a Python installation or virtual environment folder.
+fn interpreter(folder: PathBuf) -> PathBuf {
+    if cfg!(windows) {
+        let scripts = folder.join("Scripts").join("python.exe");
+        if scripts.is_file() { scripts } else { folder.join("python.exe") }
+    } else {
+        folder.join("bin").join("python3")
+    }
 }
 
 fn find_python(app_dir: &PathBuf) -> PathBuf {
@@ -38,11 +55,11 @@ fn find_python(app_dir: &PathBuf) -> PathBuf {
         return PathBuf::from(path);
     }
     // The project environment carries the optional packages (ChromaDB) for the phrase memory.
-    let venv = app_dir.join(".venv").join("Scripts").join("python.exe");
+    let venv = interpreter(app_dir.join(".venv"));
     if venv.is_file() {
         return venv;
     }
-    let bundled = app_dir.join("python").join("python.exe");
+    let bundled = interpreter(app_dir.join("python"));
     if bundled.is_file() {
         return bundled;
     }
@@ -59,7 +76,16 @@ fn find_python(app_dir: &PathBuf) -> PathBuf {
             }
         }
     }
-    PathBuf::from("python")
+    if cfg!(windows) {
+        return PathBuf::from("python");
+    }
+    // Apps started from Finder get a minimal PATH, so look in the usual places first.
+    for candidate in ["/opt/homebrew/bin/python3", "/usr/local/bin/python3", "/usr/bin/python3"] {
+        if std::path::Path::new(candidate).is_file() {
+            return PathBuf::from(candidate);
+        }
+    }
+    PathBuf::from("python3")
 }
 
 impl Sidecar {
@@ -67,7 +93,8 @@ impl Sidecar {
         let dir = app_dir();
         let python = find_python(&dir);
         // `-X utf8` as well as PYTHONUTF8: the bundled embeddable Python runs isolated and ignores the variable.
-        let spawned = Command::new(&python)
+        let mut command = Command::new(&python);
+        command
             .args(["-X", "utf8"])
             .arg(dir.join("sidecar").join("main.py"))
             .arg("--app-dir")
@@ -75,9 +102,10 @@ impl Sidecar {
             .env("PYTHONUTF8", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn();
+            .stderr(Stdio::null());
+        #[cfg(windows)]
+        command.creation_flags(CREATE_NO_WINDOW);
+        let spawned = command.spawn();
         let mut child = match spawned {
             Ok(child) => child,
             Err(err) => {

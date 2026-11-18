@@ -1,0 +1,41 @@
+name: Build macOS app
+
+# Builds the .dmg for Apple Silicon and Intel Macs. Runs by hand (Actions > Run workflow) or for a
+# pushed version tag; the files are attached to the run as artifacts.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-14
+          - arch: x64
+            runner: macos-14
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - name: Install npm packages
+        run: npm ci
+      - name: Sidecar unit tests
+        run: python3 sidecar/tests/test_units.py
+        env:
+          PYTHONUTF8: "1"
+      - name: Build
+        run: bash scripts/build-mac.sh ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AI-Translate-macos-${{ matrix.arch }}
+          path: src-tauri/target/*/release/bundle/dmg/*.dmg
+          if-no-files-found: error

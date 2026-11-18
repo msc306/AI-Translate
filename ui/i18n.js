@@ -323,6 +323,18 @@ const TEXTS = {
   gpu_nvidia: ["NVIDIA-Grafikkarte (CUDA)", "NVIDIA graphics card (CUDA)", "Tarjeta gráfica NVIDIA (CUDA)", "Carte graphique NVIDIA (CUDA)"],
   gpu_amd: ["AMD-Grafikkarte (Vulkan)", "AMD graphics card (Vulkan)", "Tarjeta gráfica AMD (Vulkan)", "Carte graphique AMD (Vulkan)"],
   gpu_intel: ["Intel-Grafikkarte (Vulkan)", "Intel graphics card (Vulkan)", "Tarjeta gráfica Intel (Vulkan)", "Carte graphique Intel (Vulkan)"],
+  gpu_apple: ["Apple-Chip (Metal)", "Apple chip (Metal)", "Chip de Apple (Metal)", "Puce Apple (Metal)"],
+  platform_line: ["System: {label}", "System: {label}", "Sistema: {label}", "Système : {label}"],
+  why_runtime_metal: [
+    "Wozu: Mit dieser Laufzeit rechnet das lokale Modell auf dem Apple-Chip (Metal). Ohne sie startet kein lokales Modell.",
+    "Why: with this runtime the local model runs on the Apple chip (Metal). Without it no local model can start.",
+    "Para qué: con este entorno el modelo local se ejecuta en el chip de Apple (Metal). Sin él no arranca ningún modelo local.",
+    "Pourquoi : avec cet environnement, le modèle local tourne sur la puce Apple (Metal). Sans lui, aucun modèle local ne démarre."],
+  why_runtime_mac_cpu: [
+    "Wozu: Diese Laufzeit führt das lokale Modell auf dem Intel-Prozessor des Mac aus. Ohne sie startet kein lokales Modell.",
+    "Why: this runtime runs the local model on the Mac's Intel processor. Without it no local model can start.",
+    "Para qué: este entorno ejecuta el modelo local en el procesador Intel del Mac. Sin él no arranca ningún modelo local.",
+    "Pourquoi : cet environnement exécute le modèle local sur le processeur Intel du Mac. Sans lui, aucun modèle local ne démarre."],
   gpu_cpu: ["Nur Prozessor (langsam)", "Processor only (slow)", "Solo procesador (lento)", "Processeur uniquement (lent)"],
   gpu_not_found: ["nicht gefunden", "not found", "no encontrada", "introuvable"],
   gpu_hint: [
@@ -447,10 +459,10 @@ const TEXTS = {
   hk_clip: ["Tastenkürzel Zwischenablage übersetzen", "Shortcut to translate the clipboard", "Atajo para traducir el portapapeles", "Raccourci pour traduire le presse-papiers"],
   hk_mic: ["Tastenkürzel Spracheingabe (Start/Stopp)", "Shortcut for speech input (start/stop)", "Atajo para la entrada de voz (iniciar/detener)", "Raccourci pour la saisie vocale (démarrer/arrêter)"],
   hk_hint: [
-    "Schreibweise wie Ctrl+Alt+T. Die Kürzel gelten überall in Windows, auch wenn das Fenster verborgen ist. Leer lassen schaltet ein Kürzel ab.",
-    "Write them like Ctrl+Alt+T. The shortcuts work everywhere in Windows, even while the window is hidden. Leave a field empty to turn that shortcut off.",
-    "Escríbalos como Ctrl+Alt+T. Los atajos funcionan en todo Windows, incluso con la ventana oculta. Deje un campo vacío para desactivar ese atajo.",
-    "Notation comme Ctrl+Alt+T. Les raccourcis fonctionnent partout dans Windows, même fenêtre masquée. Laissez un champ vide pour désactiver ce raccourci."],
+    "Schreibweise wie Ctrl+Alt+T (auf dem Mac ist Alt die Wahltaste ⌥, Cmd die Befehlstaste ⌘). Die Kürzel gelten überall auf dem Computer, auch wenn das Fenster verborgen ist. Leer lassen schaltet ein Kürzel ab.",
+    "Write them like Ctrl+Alt+T (on a Mac, Alt is the Option key ⌥ and Cmd the Command key ⌘). The shortcuts work everywhere on the computer, even while the window is hidden. Leave a field empty to turn that shortcut off.",
+    "Escríbalos como Ctrl+Alt+T (en el Mac, Alt es la tecla Opción ⌥ y Cmd la tecla Comando ⌘). Los atajos funcionan en todo el ordenador, incluso con la ventana oculta. Deje un campo vacío para desactivar ese atajo.",
+    "Notation comme Ctrl+Alt+T (sur Mac, Alt est la touche Option ⌥ et Cmd la touche Commande ⌘). Les raccourcis fonctionnent partout sur l’ordinateur, même fenêtre masquée. Laissez un champ vide pour désactiver ce raccourci."],
 
   // ---------- speech ----------
   mic_title: ["Spracheingabe: klicken, sprechen, nochmal klicken", "Speech input: click, speak, click again", "Entrada de voz: haga clic, hable y vuelva a hacer clic", "Saisie vocale : cliquer, parler, cliquer à nouveau"],

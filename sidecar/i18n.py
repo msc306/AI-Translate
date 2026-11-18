@@ -364,6 +364,16 @@ CATALOG = {
         "es": "Entorno de ejecución de llama.cpp para tarjetas gráficas NVIDIA ({tag})",
         "fr": "Environnement d'exécution llama.cpp pour cartes graphiques NVIDIA ({tag})",
     },
+    "llama.cpp-Laufzeit für Mac mit Apple Silicon, Metal ({tag})": {
+        "en": "llama.cpp runtime for Macs with Apple silicon, Metal ({tag})",
+        "es": "Entorno de ejecución de llama.cpp para Mac con Apple silicon, Metal ({tag})",
+        "fr": "Environnement d'exécution llama.cpp pour Mac avec puce Apple, Metal ({tag})",
+    },
+    "llama.cpp-Laufzeit für Mac mit Intel-Prozessor ({tag})": {
+        "en": "llama.cpp runtime for Macs with an Intel processor ({tag})",
+        "es": "Entorno de ejecución de llama.cpp para Mac con procesador Intel ({tag})",
+        "fr": "Environnement d'exécution llama.cpp pour Mac avec processeur Intel ({tag})",
+    },
     "llama.cpp-Laufzeit für AMD- und Intel-Grafikkarten, Vulkan ({tag})": {
         "en": "llama.cpp runtime for AMD and Intel graphics cards, Vulkan ({tag})",
         "es": "Entorno de ejecución de llama.cpp para tarjetas gráficas AMD e Intel, Vulkan ({tag})",
@@ -451,10 +461,32 @@ CATALOG = {
     },
 
     # ---- speech input (speech.py) ----
-    "Spracheingabe gibt es nur unter Windows.": {
-        "en": "Speech input is only available on Windows.",
-        "es": "La entrada de voz solo está disponible en Windows.",
-        "fr": "La saisie vocale n'est disponible que sous Windows.",
+    "Spracheingabe gibt es nur unter Windows und macOS.": {
+        "en": "Speech input is only available on Windows and macOS.",
+        "es": "La entrada de voz solo está disponible en Windows y macOS.",
+        "fr": "La saisie vocale n'est disponible que sous Windows et macOS.",
+    },
+    "Für die Aufnahme fehlt ein Aufnahmeprogramm. Bitte ffmpeg oder SoX installieren "
+    "(zum Beispiel mit Homebrew: brew install ffmpeg).": {
+        "en": "No recording program is installed. Please install ffmpeg or SoX "
+              "(for example with Homebrew: brew install ffmpeg).",
+        "es": "Falta un programa de grabación. Instale ffmpeg o SoX "
+              "(por ejemplo con Homebrew: brew install ffmpeg).",
+        "fr": "Aucun programme d'enregistrement n'est installé. Installez ffmpeg ou SoX "
+              "(par exemple avec Homebrew : brew install ffmpeg).",
+    },
+    "Für die Spracheingabe fehlt whisper.cpp. Bitte mit Homebrew installieren "
+    "(brew install whisper-cpp) und in den Einstellungen unter „Spracheingabe“ "
+    "ein Sprachmodell herunterladen.": {
+        "en": "Speech input needs whisper.cpp. Please install it with Homebrew "
+              "(brew install whisper-cpp) and download a speech model in the settings under "
+              "“Speech input”.",
+        "es": "La entrada de voz necesita whisper.cpp. Instálelo con Homebrew "
+              "(brew install whisper-cpp) y descargue un modelo de voz en los ajustes, en "
+              "«Entrada de voz».",
+        "fr": "La saisie vocale nécessite whisper.cpp. Installez-le avec Homebrew "
+              "(brew install whisper-cpp) et téléchargez un modèle vocal dans les paramètres, sous "
+              "« Saisie vocale ».",
     },
     "Es läuft bereits eine Aufnahme.": {
         "en": "A recording is already running.",
@@ -607,10 +639,10 @@ CATALOG = {
     },
 
     # ---- text recognition ----
-    "Die Texterkennung aus Bildern gibt es nur unter Windows.": {
-        "en": "Text recognition from images is only available on Windows.",
-        "es": "El reconocimiento de texto en imágenes solo está disponible en Windows.",
-        "fr": "La reconnaissance de texte dans les images n'est disponible que sous Windows.",
+    "Die Texterkennung aus Bildern gibt es nur unter Windows und macOS.": {
+        "en": "Text recognition from images is only available on Windows and macOS.",
+        "es": "El reconocimiento de texto en imágenes solo está disponible en Windows y macOS.",
+        "fr": "La reconnaissance de texte dans les images n'est disponible que sous Windows et macOS.",
     },
     "In der Zwischenablage liegt weder Text noch ein Bild.": {
         "en": "The clipboard contains neither text nor an image.",
